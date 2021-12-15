@@ -1,28 +1,51 @@
 import argparse
-import pandas as pd
 import pickle
 import os
+import numpy as np
 
 cwd = os.getcwd()
 
+n_sims = 0
 
 
-class Simu(object):
+
+class Simulation(object):
 
     def __init__(self, dictionary):
 
         # Set attributes from dictionary
         for key in dictionary:
-            setattr(self, '_'+key, dictionary[key])
+            setattr(self, key, dictionary[key])
+            self.I = [0] * dictionary['A'].shape[0] #inventory #np.zeros((0,)*dictionary['A'].shape[0])  #
+            self.L = [0] * dictionary['q'].shape[0] #backlog #np.zeros((0,)*dictionary['q'].shape[0])  # [0] * dictionary['q'].shape[0] #backlog
+
 
     # Getter/setter stuff
     @property
+    def constant_order(self, n):
+        self.A += n
+    
+    def demand_draw(self):
+        index = np.random.choice(self.mu.shape[0])
+        demand = self.d[index]
+        return demand
+    
+    def get_cheapest(self):
+        self.A = self.A[np.array(np.argsort(self.p))]
+
+    def update_inventory(self):
+        self.I = 
+
+    def update_backlog(self):
+        self.L = 
+
+    
     def get_c(self):
         return self.c
-    
+  
     def set_c(self, x):
         self.c = x
-
+'''
     def get_q(self):
         return self.q
     
@@ -58,6 +81,25 @@ class Simu(object):
     
     def set_B(self, x):
         self.B = x
+   ''' 
+
+def run():
+    '''run simulation'''
+    global n_sims
+    i = 0
+
+    try:
+        while i < n_sims:
+            sim = sim_list[i]
+            #sim.constant_order(n=0)
+            sim.demand_draw()
+
+    except:
+        print("Simulation failed")
+    
+
+
+
 
 def loadpickles(path):
     simlist = []
@@ -73,18 +115,23 @@ def loadpickles(path):
                 print(pklfile)
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
-                print(loadedpkl)
-                simlist.append(Simu(loadedpkl['instance']))
+                #print(loadedpkl)
+                simlist.append(Simulation(loadedpkl['instance']))
             else:
-                lipgui.msgbox("No files found!")
-    
+                print("No files found!")
+
+    global n_sims 
+    n_sims = len(simlist)
     return simlist
+
 
 
 
 if __name__ == '__main__':
 
     sim_list = loadpickles(path = '')
+
+    run()
 
     
 #THIS IS USED TO RUN FROM CMD LINE
