@@ -5,7 +5,13 @@ import numpy as np
 
 cwd = os.getcwd()
 
-n_sims = 0
+n_sims = 1000
+n_paths = 100
+
+
+#m num of resources - len of c
+#n num of products - len(p)
+#l num of activities - len(q)
 
 
 
@@ -16,36 +22,43 @@ class Simulation(object):
         # Set attributes from dictionary
         for key in dictionary:
             setattr(self, key, dictionary[key])
-            self.I = [0] * dictionary['A'].shape[0] #inventory #np.zeros((0,)*dictionary['A'].shape[0])  #
-            self.L = [0] * dictionary['q'].shape[0] #backlog #np.zeros((0,)*dictionary['q'].shape[0])  # [0] * dictionary['q'].shape[0] #backlog
+        self.I = np.zeros(dictionary['A'].shape[0])  #Inventory
+        self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
+        self.x = np.zeros(len(self.c)) 
+        self.z = np.zeros(len(self.q)) #processing activities
+        self.cost = 0
+        self.demand = np.zeros(dictionary['p'].shape[0])
 
 
     # Getter/setter stuff
     @property
-    def constant_order(self, n):
-        self.A += n
+    def constant_order(self):
+        self.x = np.zeros(len(self.c))
     
     def demand_draw(self):
         index = np.random.choice(self.mu.shape[0])
-        demand = self.d[index]
-        return demand
+        self.demand = self.d[index]
+        
     
     def get_cheapest(self):
         self.A = self.A[np.array(np.argsort(self.p))]
 
+    #def constant_fulfillment(self):
+    #    se
+
     def update_inventory(self):
-        self.I = 
+        self.I += self.x - np.matmul(self.A, self.z)
 
     def update_backlog(self):
-        self.L = 
+        self.BL += self.demand - np.matmul(self.z, self.B)
 
-    
+''' 
     def get_c(self):
         return self.c
   
     def set_c(self, x):
         self.c = x
-'''
+
     def get_q(self):
         return self.q
     
@@ -85,14 +98,25 @@ class Simulation(object):
 
 def run():
     '''run simulation'''
-    global n_sims
-    i = 0
+    #global n_sims
+    #global n_paths
+    n_params = len(sim_list)
+
+    i,j,k = 0,0,0
 
     try:
-        while i < n_sims:
-            sim = sim_list[i]
-            #sim.constant_order(n=0)
-            sim.demand_draw()
+        while i < n_params:
+            while j < n_paths:
+                while k < n_sims:
+                    sim = sim_list[i]
+                    #sim.constant_order()
+                    sim.demand_draw()
+                    sim.update_backlog()
+                    sim.update_inventory()
+
+                    k+=1
+                j+=1
+            i+=1
 
     except:
         print("Simulation failed")
@@ -120,8 +144,7 @@ def loadpickles(path):
             else:
                 print("No files found!")
 
-    global n_sims 
-    n_sims = len(simlist)
+
     return simlist
 
 
