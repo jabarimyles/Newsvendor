@@ -10,12 +10,22 @@ cwd = os.getcwd()
 n_sims = 1000
 days = 100
 
+#track costs over sample paths, 
 
 #m num of resources - len of c
+#c_i is ordering cost (c in paper)
+#p_i is backlog cost (b in paper)
+#h_i is holding cost (h in paper)
+#q_k is processing activity cost (p_k in paper)
 #n num of products - len(p)
 #l num of activities - len(q)
+#B is a qxp matrix linking activities to products
+#A is a cxq matrix mapping resources to activities
 
-#r (b in pickle) is S_i in paper, S-i is justt how much we want on hand at the end of the day
+#M resources (indexed by i) to fill demand for N products (indexed by j) 
+#by means of L processing activities (indexed by k)
+
+#r (B in pickle) is S_i in paper, S-i is justt how much we want on hand at the end of the day
 #page 6 equation k(j) argmin , for product j what is its lowest cost activity to fill it. q_k + \sum_i a_ik c_i
 
 #x in pickle is z in paper, 
@@ -37,6 +47,7 @@ class Simulation(object):
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
         self.x = np.zeros(len(self.c)) 
         self.z = np.zeros(len(self.q)) #processing activities
+        self.h = self.c
         self.cost = 0
         self.demand = np.zeros(dictionary['p'].shape[0])
 
@@ -44,18 +55,42 @@ class Simulation(object):
     # Getter/setter stuff
     #@property
     def constant_order(self):
-        self.x.fill(0)
+        #res_to_prod = np.matmul(self.A, self.B)
+#processing + sum(c*a) c is per unit odering cost, a is the resource requirements for each processing activity
+        #self.r - self.I + 
+        #for k in range(self.r.shape[0]):
+        min_actv = np.zeros(self.c.shape[0])
+
+        for i in range(self.p.shape[0]):
+            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
+            cost_dict = {}
+            for j in pos_actvs:
+                actv_cost = np.matmul(self.c ,self.A[:,j])
+                cost_dict[j] = self.q[j] + actv_cost
+            min_actv[min(cost_dict, key=cost_dict.get)] += 1 #lowest activity for given product
+
+        z = self.r[k] - self.I[k] + min_actv
+               # np.where(self.A[:,i] != 0) #resource for each pos_actvs
+            #cheapest_activity = low_actvs[0][np.argmin(self.q[low_actvs])]
+            #cheapest_act_cost = self.q[cheapest_activity]
+
+        #    for j in prods:
+        #        for k in 
+        #        actv = np.where(self.A[])
     
+    def constant_fulfillment(self):
+        self.y[self.demand_index] 
+
+
     def demand_draw(self):
         index = np.random.choice(self.mu.shape[0])
+        self.demand_index = index
         self.demand = self.d[index]
         
     
     def get_cheapest(self):
         self.A = self.A[np.array(np.argsort(self.p))]
 
-    def constant_fulfillment(self):
-        self.x.fill(0)
 
 
     def update_inventory(self):
@@ -70,27 +105,13 @@ class Simulation(object):
     def plot_sim_backlog(self):
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
-        x = list(range(100))
-        y1 = self.BL_hist[:,1]
-        y2 = self.BL_hist[:,2]
-        y3 = self.BL_hist[:,3]
-        y4 = self.BL_hist[:,4]
-        y5 = self.BL_hist[:,5]
-        y6 = self.BL_hist[:,6]
-        plt.plot(x,y1,x,y2,x,y3,x,y4,x,y5,x,y6)
+        plt.plot(self.BL_hist)
         plt.show()
 
     def plot_sim_inventory(self):
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
-        x = list(range(100))
-        y1 = self.I_hist[:,1]
-        y2 = self.I_hist[:,2]
-        y3 = self.I_hist[:,3]
-        y4 = self.I_hist[:,4]
-        y5 = self.I_hist[:,5]
-        y6 = self.I_hist[:,6]
-        plt.plot(x,y1,x,y2,x,y3,x,y4,x,y5,x,y6)
+        plt.plot(self.I_hist)
         plt.show()
 
 ''' 
@@ -185,7 +206,7 @@ def loadpickles(path):
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
-                simlist.append(Simulation(loadedpkl['instance']))
+                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance']}))
             else:
                 print("No files found!")
 
