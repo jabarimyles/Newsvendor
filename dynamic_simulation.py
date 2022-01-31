@@ -54,12 +54,12 @@ class Simulation(object):
 
     # Getter/setter stuff
     #@property
-    def constant_order(self):
+    def smart_order(self):
         #res_to_prod = np.matmul(self.A, self.B)
 #processing + sum(c*a) c is per unit odering cost, a is the resource requirements for each processing activity
         #self.r - self.I + 
         #for k in range(self.r.shape[0]):
-        min_actv = np.zeros(self.c.shape[0])
+        min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
 
         for i in range(self.p.shape[0]):
             pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
@@ -67,9 +67,16 @@ class Simulation(object):
             for j in pos_actvs:
                 actv_cost = np.matmul(self.c ,self.A[:,j])
                 cost_dict[j] = self.q[j] + actv_cost
-            min_actv[min(cost_dict, key=cost_dict.get)] += 1 #lowest activity for given product
+            min_actv[j,i] += 1 #lowest activity for given product
 
-        z = self.r[k] - self.I[k] + min_actv
+        x = self.r[i] - self.I[i] + np.matmul(self.A,np.matmul(min_actv, self.BL))
+
+        self.cost += np.matmul(x, self.c) #updates cost
+
+        self.BL.fill(0) #updates backlog
+
+        self.I += x #updates inventory
+
                # np.where(self.A[:,i] != 0) #resource for each pos_actvs
             #cheapest_activity = low_actvs[0][np.argmin(self.q[low_actvs])]
             #cheapest_act_cost = self.q[cheapest_activity]
@@ -78,7 +85,22 @@ class Simulation(object):
         #        for k in 
         #        actv = np.where(self.A[])
     
-    def constant_fulfillment(self):
+    def update_cost(self):
+        d=c+c
+
+    def smart_fulfillment(self):
+        min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
+
+        for i in range(self.p.shape[0]):
+            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
+            cost_dict = {}
+            for j in pos_actvs:
+                actv_cost = np.matmul(self.c ,self.A[:,j])
+                cost_dict[j] = self.q[j] + actv_cost
+            min_actv[j,i] += 1 #lowest activity for given product
+        
+        t + np.matmul(min_actv, self.BL) #Figure out what the activity processing matrix is
+
         self.y[self.demand_index] 
 
 
@@ -171,9 +193,9 @@ def run():
             while j < n_sims:
                 while k < days:
                     sim = sim_list[i]
-                    sim.constant_order()
+                    sim.smart_order()
                     sim.demand_draw()
-                    sim.constant_fulfillment()
+                    sim.smart_fulfillment()
                     sim.update_backlog()
                     sim.update_inventory()
 
