@@ -69,13 +69,10 @@ class Simulation(object):
                 cost_dict[j] = self.q[j] + actv_cost
             min_actv[j,i] += 1 #lowest activity for given product
 
-        x = self.r[i] - self.I[i] + np.matmul(self.A,np.matmul(min_actv, self.BL))
+        self.z = self.r[i] - self.I[i] + np.matmul(self.A,np.matmul(min_actv, self.BL))
 
         self.cost += np.matmul(x, self.c) #updates cost
 
-        self.BL.fill(0) #updates backlog
-
-        self.I += x #updates inventory
 
                # np.where(self.A[:,i] != 0) #resource for each pos_actvs
             #cheapest_activity = low_actvs[0][np.argmin(self.q[low_actvs])]
@@ -101,7 +98,7 @@ class Simulation(object):
         
         t + np.matmul(min_actv, self.BL) #Figure out what the activity processing matrix is
 
-        self.y[self.demand_index] 
+        #self.y[self.demand_index] 
 
 
     def demand_draw(self):
