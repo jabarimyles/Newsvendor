@@ -28,7 +28,7 @@ days = 100
 #r (B in pickle) is S_i in paper, S-i is justt how much we want on hand at the end of the day
 #page 6 equation k(j) argmin , for product j what is its lowest cost activity to fill it. q_k + \sum_i a_ik c_i
 
-#x in pickle is z in paper, 
+
 
 #inventory should stay constant
 #backlog shoudl grow
@@ -45,66 +45,45 @@ class Simulation(object):
         self.I_hist = np.zeros(dictionary['A'].shape[0])
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
-        self.x = np.zeros(len(self.c)) 
-        self.z = np.zeros(len(self.q)) #processing activities
+        #self.x = np.zeros(len(self.q)) 
+        self.z = np.zeros(len(self.c)) #processing activities
         self.h = self.c
         self.cost = 0
         self.demand = np.zeros(dictionary['p'].shape[0])
+        self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
+        self.Xi = np.zeros(len(self.q)) 
 
+    def get_min_actv(self):
+        for i in range(self.p.shape[0]):
+            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
+            cost_dict = {}
+            for j in pos_actvs:
+                actv_cost = np.matmul(self.c ,self.A[:,j])
+                cost_dict[j] = self.q[j] + actv_cost
+            self.min_actv[min(cost_dict,key=cost_dict.get),i] += 1 #lowest activity for given product
 
     # Getter/setter stuff
     #@property
     def smart_order(self):
-        #res_to_prod = np.matmul(self.A, self.B)
 #processing + sum(c*a) c is per unit odering cost, a is the resource requirements for each processing activity
-        #self.r - self.I + 
-        #for k in range(self.r.shape[0]):
-        min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
+        self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
+        self.cost += np.matmul(self.z, self.c) #updates cost
+        #ADD SEPARATE COST TRACKING
 
-        for i in range(self.p.shape[0]):
-            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
-            cost_dict = {}
-            for j in pos_actvs:
-                actv_cost = np.matmul(self.c ,self.A[:,j])
-                cost_dict[j] = self.q[j] + actv_cost
-            min_actv[j,i] += 1 #lowest activity for given product
-
-        self.z = self.r[i] - self.I[i] + np.matmul(self.A,np.matmul(min_actv, self.BL))
-
-        self.cost += np.matmul(x, self.c) #updates cost
-
-
-               # np.where(self.A[:,i] != 0) #resource for each pos_actvs
-            #cheapest_activity = low_actvs[0][np.argmin(self.q[low_actvs])]
-            #cheapest_act_cost = self.q[cheapest_activity]
-
-        #    for j in prods:
-        #        for k in 
-        #        actv = np.where(self.A[])
+              
     
-    def update_cost(self):
-        d=c+c
 
-    def smart_fulfillment(self):
-        min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
-
-        for i in range(self.p.shape[0]):
-            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
-            cost_dict = {}
-            for j in pos_actvs:
-                actv_cost = np.matmul(self.c ,self.A[:,j])
-                cost_dict[j] = self.q[j] + actv_cost
-            min_actv[j,i] += 1 #lowest activity for given product
-        
-        t + np.matmul(min_actv, self.BL) #Figure out what the activity processing matrix is
-
-        #self.y[self.demand_index] 
+    def smart_fulfillment(self):   
+        num_fill =  np.matmul(self.min_actv, self.BL)
+        self.Xi += num_fill  #Update fulfilled
+        self.cost += np.sum(self.q * num_fill) #Update cost
 
 
     def demand_draw(self):
         index = np.random.choice(self.mu.shape[0])
         self.demand_index = index
         self.demand = self.d[index]
+        self.Xi = self.x[index]
         
     
     def get_cheapest(self):
@@ -113,13 +92,14 @@ class Simulation(object):
 
 
     def update_inventory(self):
-        self.I += self.x - np.matmul(self.A, self.z)
+        self.I += self.z - np.matmul(self.A, self.Xi)
         self.I_hist = np.vstack([self.I_hist, self.I])
 
 
     def update_backlog(self):
-        self.BL += self.demand - np.matmul(self.z, self.B)
         self.BL_hist = np.vstack([self.BL_hist, self.BL])
+        self.BL += self.demand - np.matmul(self.Xi, self.B)
+        
 
     def plot_sim_backlog(self):
         fig = plt.figure()
@@ -188,8 +168,10 @@ def run():
     try:
         while i < n_params:
             while j < n_sims:
+                
                 while k < days:
                     sim = sim_list[i]
+                    sim.get_min_actv()
                     sim.smart_order()
                     sim.demand_draw()
                     sim.smart_fulfillment()
