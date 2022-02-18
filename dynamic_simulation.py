@@ -167,18 +167,17 @@ def run():
 
     try:
         while i < n_params:
-            while j < n_sims:
-                
+            sim = sim_list[i]
+            while j < n_sims:    
+                sim.get_min_actv()       
                 while k < days:
-                    sim = sim_list[i]
-                    sim.get_min_actv()
-                    sim.smart_order()
-                    sim.demand_draw()
-                    sim.smart_fulfillment()
-                    sim.update_backlog()
-                    sim.update_inventory()
+                        sim.smart_order()
+                        sim.demand_draw()
+                        sim.smart_fulfillment()
+                        sim.update_backlog()
+                        sim.update_inventory()
 
-                    k+=1
+                        k+=1
                     
                 sim.plot_sim_backlog()
                 sim.plot_sim_inventory()
