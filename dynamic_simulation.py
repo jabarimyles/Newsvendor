@@ -3,6 +3,8 @@ import pickle
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import csv
+import copy
 
 cwd = os.getcwd()
 
@@ -10,7 +12,7 @@ cwd = os.getcwd()
 n_sims = 1000
 days = 100
 
-#track costs over sample paths, 
+csv_name = 'newsvendoroutput.csv'
 
 #m num of resources - len of c
 #c_i is ordering cost (c in paper)
@@ -30,8 +32,6 @@ days = 100
 
 
 
-#inventory should stay constant
-#backlog shoudl grow
 
 
 class Simulation(object):
@@ -45,10 +45,14 @@ class Simulation(object):
         self.I_hist = np.zeros(dictionary['A'].shape[0])
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
-        #self.x = np.zeros(len(self.q)) 
         self.z = np.zeros(len(self.c)) #processing activities
         self.h = self.c
         self.cost = 0
+        self.ordering_cost = 0
+        self.backlog_cost = 0
+        self.holding_cost = 0
+        self.fulfillment_cost = 0
+
         self.demand = np.zeros(dictionary['p'].shape[0])
         self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
         self.Xi = np.zeros(len(self.q)) 
@@ -62,21 +66,17 @@ class Simulation(object):
                 cost_dict[j] = self.q[j] + actv_cost
             self.min_actv[min(cost_dict,key=cost_dict.get),i] += 1 #lowest activity for given product
 
-    # Getter/setter stuff
-    #@property
     def smart_order(self):
-#processing + sum(c*a) c is per unit odering cost, a is the resource requirements for each processing activity
         self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
-        self.cost += np.matmul(self.z, self.c) #updates cost
+        self.cost += np.matmul(self.z, self.c) #ordering cost
+        self.ordering_cost += np.matmul(self.z, self.c)
         #ADD SEPARATE COST TRACKING
-
-              
-    
 
     def smart_fulfillment(self):   
         num_fill =  np.matmul(self.min_actv, self.BL)
         self.Xi += num_fill  #Update fulfilled
-        self.cost += np.sum(self.q * num_fill) #Update cost
+        self.cost += np.sum(self.q * num_fill) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * num_fill)
 
 
     def demand_draw(self):
@@ -93,14 +93,17 @@ class Simulation(object):
 
     def update_inventory(self):
         self.I += self.z - np.matmul(self.A, self.Xi)
+        self.cost += np.matmul(self.I, self.h)
+        self.holding_cost += np.matmul(self.I, self.h) #holding cost
         self.I_hist = np.vstack([self.I_hist, self.I])
 
 
     def update_backlog(self):
         self.BL_hist = np.vstack([self.BL_hist, self.BL])
         self.BL += self.demand - np.matmul(self.Xi, self.B)
+        self.cost += np.matmul(self.BL, self.p)
+        self.backlog_cost += np.matmul(self.BL, self.p) #backlog cost
         
-
     def plot_sim_backlog(self):
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
@@ -113,49 +116,25 @@ class Simulation(object):
         plt.plot(self.I_hist)
         plt.show()
 
-''' 
-    def get_c(self):
-        return self.c
-  
-    def set_c(self, x):
-        self.c = x
+    def output_to_csv(self,i,j):
+        
+        if j == 0 and i == 0:
+            csv_file = open(csv_name, "w")
+            writer = csv.writer(csv_file) 
+            fields = ['file name', 'sim number', 'cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost']
+            writer.writerow(fields)
+        else:
+            csv_file = open(csv_name, "a")
+            writer = csv.writer(csv_file) 
+        
+        writer.writerow([self.file_name, j, self.cost, self.holding_cost, self.backlog_cost, self.fulfillment_cost, self.ordering_cost])
+        csv_file.close()
+    
+    
 
-    def get_q(self):
-        return self.q
-    
-    def set_q(self, x):
-        self.q = x
-    
-    def get_p(self):
-        return self.p
-    
-    def set_p(self, x):
-        self.p = x
 
-    def get_d(self):
-        return self.d
-    
-    def set_d(self, x):
-        self.d = x
-    
-    def get_mu(self):
-        return self.mu
-    
-    def set_mu(self, x):
-        self.mu = x
-    
-    def get_A(self):
-        return self.A
-    
-    def set_A(self, x):
-        self.A = x
-    
-    def get_B(self):
-        return self.B
-    
-    def set_B(self, x):
-        self.B = x
-   ''' 
+
+ 
 
 def run():
     '''run simulation'''
@@ -163,30 +142,38 @@ def run():
     #global n_paths
     n_params = len(sim_list)
 
-    i,j,k = 1,1,1
+    i=0
 
     try:
         while i < n_params:
-            while j < n_sims:
-                
+            
+            j=0
+            while j < n_sims:    
+                sim = copy.deepcopy(sim_list[i])
+                sim.get_min_actv()
+                k=0       
                 while k < days:
-                    sim = sim_list[i]
-                    sim.get_min_actv()
-                    sim.smart_order()
-                    sim.demand_draw()
-                    sim.smart_fulfillment()
-                    sim.update_backlog()
-                    sim.update_inventory()
+                        sim.smart_order()
+                        sim.demand_draw()
+                        sim.smart_fulfillment()
+                        sim.update_backlog()
+                        sim.update_inventory()
 
-                    k+=1
+                        k+=1
                     
                 sim.plot_sim_backlog()
                 sim.plot_sim_inventory()
+                sim.output_to_csv(i,j)
+                sim.cost
                 j+=1
+                j
             i+=1
+        print("Simulation passed")
+    
 
     except:
         print("Simulation failed")
+    
     
 
 
@@ -207,7 +194,7 @@ def loadpickles(path):
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
-                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance']}))
+                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}}))
             else:
                 print("No files found!")
 
