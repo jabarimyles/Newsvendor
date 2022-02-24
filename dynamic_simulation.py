@@ -75,8 +75,8 @@ class Simulation(object):
     def smart_fulfillment(self):   
         num_fill =  np.matmul(self.min_actv, self.BL)
         self.Xi += num_fill  #Update fulfilled
-        self.cost += np.sum(self.q * num_fill) #fulfillment cost
-        self.fulfillment_cost += np.sum(self.q * num_fill)
+        self.cost += np.sum(self.q * self.Xi) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.Xi)
 
 
     def demand_draw(self):
@@ -99,10 +99,10 @@ class Simulation(object):
 
 
     def update_backlog(self):
-        self.BL_hist = np.vstack([self.BL_hist, self.BL])
         self.BL += self.demand - np.matmul(self.Xi, self.B)
         self.cost += np.matmul(self.BL, self.p)
         self.backlog_cost += np.matmul(self.BL, self.p) #backlog cost
+        self.BL_hist = np.vstack([self.BL_hist, self.BL])
         
     def plot_sim_backlog(self):
         fig = plt.figure()
