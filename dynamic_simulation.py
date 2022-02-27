@@ -145,7 +145,7 @@ class Simulation(object):
 def summarize_sims(df):
     df = df[['file name', 'simulation cost', 'cost']]
     df['sim_cost_per_day'] = df['simulation cost']/days
-    df.groupby(['file name'], as_index=False).mean()
+    df = df.groupby(['file name'], as_index=False).mean()
     df['cost_ratio'] = df['sim_cost_per_day']/df['cost']
 
     return df
@@ -178,14 +178,14 @@ def run():
 
                         k+=1
                     
-                #sim.plot_sim_backlog()
-                #sim.plot_sim_inventory()
+                sim.plot_sim_backlog()
+                sim.plot_sim_inventory()
                 j+=1
                 sim_df.loc[len(sim_df)] = [sim.file_name, j, sim.sim_cost, sim.cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]
                 sim.cost
             i+=1
         sum_sim_df = summarize_sims(sim_df)
-        sum_sim_df.to_csv('newsvendoroutput_summary', sep='\t')
+        sum_sim_df.to_csv('newsvendoroutput_summary.csv', sep='\t')
         sim_df.to_csv(csv_name, sep='\t')
         print("Simulation passed")
     
