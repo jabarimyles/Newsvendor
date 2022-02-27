@@ -1,10 +1,14 @@
 import argparse
 import pickle
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 import csv
 import copy
+import pdb
+import pandas as pd
+import datetime
 
 cwd = os.getcwd()
 
@@ -13,6 +17,9 @@ n_sims = 1000
 days = 100
 
 csv_name = 'newsvendoroutput.csv'
+
+column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost']
+sim_df = pd.DataFrame(columns = column_names)
 
 #m num of resources - len of c
 #c_i is ordering cost (c in paper)
@@ -47,7 +54,7 @@ class Simulation(object):
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
         self.z = np.zeros(len(self.c)) #processing activities
         self.h = self.c
-        self.cost = 0
+        self.sim_cost = 0
         self.ordering_cost = 0
         self.backlog_cost = 0
         self.holding_cost = 0
@@ -68,14 +75,14 @@ class Simulation(object):
 
     def smart_order(self):
         self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
-        self.cost += np.matmul(self.z, self.c) #ordering cost
+        self.sim_cost += np.matmul(self.z, self.c) #ordering cost
         self.ordering_cost += np.matmul(self.z, self.c)
         #ADD SEPARATE COST TRACKING
 
     def smart_fulfillment(self):   
         num_fill =  np.matmul(self.min_actv, self.BL)
         self.Xi += num_fill  #Update fulfilled
-        self.cost += np.sum(self.q * self.Xi) #fulfillment cost
+        self.sim_cost += np.sum(self.q * self.Xi) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.Xi)
 
 
@@ -93,14 +100,16 @@ class Simulation(object):
 
     def update_inventory(self):
         self.I += self.z - np.matmul(self.A, self.Xi)
-        self.cost += np.matmul(self.I, self.h)
+        #if np.any(self.I < 0):
+        #    pdb.set_trace()
+        self.sim_cost += np.matmul(self.I, self.h)
         self.holding_cost += np.matmul(self.I, self.h) #holding cost
         self.I_hist = np.vstack([self.I_hist, self.I])
 
 
     def update_backlog(self):
         self.BL += self.demand - np.matmul(self.Xi, self.B)
-        self.cost += np.matmul(self.BL, self.p)
+        self.sim_cost += np.matmul(self.BL, self.p)
         self.backlog_cost += np.matmul(self.BL, self.p) #backlog cost
         self.BL_hist = np.vstack([self.BL_hist, self.BL])
         
@@ -116,22 +125,30 @@ class Simulation(object):
         plt.plot(self.I_hist)
         plt.show()
 
-    def output_to_csv(self,i,j):
-        
-        if j == 0 and i == 0:
+    #def append_to_df(self,i,j):
+    #    global sim_df
+    #    if j == n_sims and i == days:
+
+
+    def output_to_csv(self, sim_df):
             csv_file = open(csv_name, "w")
             writer = csv.writer(csv_file) 
-            fields = ['file name', 'sim number', 'cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost']
-            writer.writerow(fields)
-        else:
-            csv_file = open(csv_name, "a")
+            #writer.writerow(fields)
+            #csv_file = open(csv_name, "a")
             writer = csv.writer(csv_file) 
         
-        writer.writerow([self.file_name, j, self.cost, self.holding_cost, self.backlog_cost, self.fulfillment_cost, self.ordering_cost])
-        csv_file.close()
-    
-    
+           
+            csv_file.close()
 
+    
+    
+def summarize_sims(df):
+    df = df[['file name', 'simulation cost', 'cost']]
+    df['sim_cost_per_day'] = df['simulation cost']/days
+    df.groupby(['file name'], as_index=False).mean()
+    df['cost_ratio'] = df['sim_cost_per_day']/df['cost']
+
+    return df
 
 
  
@@ -161,13 +178,15 @@ def run():
 
                         k+=1
                     
-                sim.plot_sim_backlog()
-                sim.plot_sim_inventory()
-                sim.output_to_csv(i,j)
-                sim.cost
+                #sim.plot_sim_backlog()
+                #sim.plot_sim_inventory()
                 j+=1
-                j
+                sim_df.loc[len(sim_df)] = [sim.file_name, j, sim.sim_cost, sim.cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]
+                sim.cost
             i+=1
+        sum_sim_df = summarize_sims(sim_df)
+        sum_sim_df.to_csv('newsvendoroutput_summary', sep='\t')
+        sim_df.to_csv(csv_name, sep='\t')
         print("Simulation passed")
     
 
@@ -201,16 +220,22 @@ def loadpickles(path):
 
     return simlist
 
+###cost is a lower bound on average of sample paths
+###ratio should be greater than 1, must be less than 2
+###
 
 
 
 if __name__ == '__main__':
 
+    begin_time = datetime.datetime.now()
+
+
     sim_list = loadpickles(path = '')
 
     run()
 
-    
+    print(datetime.datetime.now() - begin_time)
 #THIS IS USED TO RUN FROM CMD LINE
 #    parser = argparse.ArgumentParser(description='Get path to simulation information.')
 
