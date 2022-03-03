@@ -3,17 +3,18 @@ import pickle
 import os
 import sys
 import numpy as np
-import matplotlib.pyplot as plt
 import csv
 import copy
 import pdb
 import pandas as pd
 import datetime
+import matplotlib.pyplot as plt
+
 
 cwd = os.getcwd()
 
 
-n_sims = 1000
+n_sims = 10
 days = 100
 
 csv_name = 'newsvendoroutput.csv'
@@ -114,16 +115,20 @@ class Simulation(object):
         self.BL_hist = np.vstack([self.BL_hist, self.BL])
         
     def plot_sim_backlog(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
+        #fig = plt.figure()
+        #fig.add_subplot(111)
         plt.plot(self.BL_hist)
-        plt.show()
+        plt.title(self.file_name)
+        plt.show(block=False)
+        #input('press <ENTER> to continue')
+        #plt.savefig("temp.png")
 
     def plot_sim_inventory(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
+        #fig = plt.figure()
+        #ax = fig.add_subplot(1, 1, 1)
         plt.plot(self.I_hist)
         plt.show()
+        #plt.savefig("temp.png")
 
     #def append_to_df(self,i,j):
     #    global sim_df
@@ -178,8 +183,8 @@ def run():
 
                         k+=1
                     
-                sim.plot_sim_backlog()
-                sim.plot_sim_inventory()
+                #sim.plot_sim_backlog()
+                #sim.plot_sim_inventory()
                 j+=1
                 sim_df.loc[len(sim_df)] = [sim.file_name, j, sim.sim_cost, sim.cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]
                 sim.cost
