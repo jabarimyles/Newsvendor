@@ -9,13 +9,17 @@ import pdb
 import pandas as pd
 import datetime
 import matplotlib.pyplot as plt
+from scipy.stats import sem
+import cProfile
+#from optimals import sec_stg, ato_opt, nn_opt
 
+seed_rand = np.random.RandomState(0)
 
 cwd = os.getcwd()
 
-
-n_sims = 10
+n_sims = 1000
 days = 100
+
 
 csv_name = 'newsvendoroutput.csv'
 
@@ -44,7 +48,7 @@ sim_df = pd.DataFrame(columns = column_names)
 
 class Simulation(object):
 
-    def __init__(self, dictionary):
+    def __init__(self, dictionary,alpha):
 
         # Set attributes from dictionary
         for key in dictionary:
@@ -54,7 +58,7 @@ class Simulation(object):
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
         self.z = np.zeros(len(self.c)) #processing activities
-        self.h = self.c
+        self.h = self.c * alpha
         self.sim_cost = 0
         self.ordering_cost = 0
         self.backlog_cost = 0
@@ -78,7 +82,7 @@ class Simulation(object):
         self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
         self.sim_cost += np.matmul(self.z, self.c) #ordering cost
         self.ordering_cost += np.matmul(self.z, self.c)
-        #ADD SEPARATE COST TRACKING
+        #ADD SEPARATE COST TRACKING 2,4,7,8,10,12
 
     def smart_fulfillment(self):   
         num_fill =  np.matmul(self.min_actv, self.BL)
@@ -88,10 +92,10 @@ class Simulation(object):
 
 
     def demand_draw(self):
-        index = np.random.choice(self.mu.shape[0])
+        index = seed_rand.randint(self.mu.shape[0])
         self.demand_index = index
         self.demand = self.d[index]
-        self.Xi = self.x[index]
+        self.Xi = copy.deepcopy(self.x[index])
         
     
     def get_cheapest(self):
@@ -110,7 +114,7 @@ class Simulation(object):
 
     def update_backlog(self):
         self.BL += self.demand - np.matmul(self.Xi, self.B)
-        self.sim_cost += np.matmul(self.BL, self.p)
+        self.sim_cost += np.matmul(self.BL, self.p) #np.any(self.BL < 0)
         self.backlog_cost += np.matmul(self.BL, self.p) #backlog cost
         self.BL_hist = np.vstack([self.BL_hist, self.BL])
         
@@ -120,8 +124,7 @@ class Simulation(object):
         plt.plot(self.BL_hist)
         plt.title(self.file_name)
         plt.show(block=False)
-        #input('press <ENTER> to continue')
-        #plt.savefig("temp.png")
+
 
     def plot_sim_inventory(self):
         #fig = plt.figure()
@@ -130,19 +133,12 @@ class Simulation(object):
         plt.show()
         #plt.savefig("temp.png")
 
-    #def append_to_df(self,i,j):
-    #    global sim_df
-    #    if j == n_sims and i == days:
-
-
     def output_to_csv(self, sim_df):
             csv_file = open(csv_name, "w")
             writer = csv.writer(csv_file) 
             #writer.writerow(fields)
             #csv_file = open(csv_name, "a")
             writer = csv.writer(csv_file) 
-        
-           
             csv_file.close()
 
     
@@ -150,15 +146,18 @@ class Simulation(object):
 def summarize_sims(df):
     df = df[['file name', 'simulation cost', 'cost']]
     df['sim_cost_per_day'] = df['simulation cost']/days
-    df = df.groupby(['file name'], as_index=False).mean()
-    df['cost_ratio'] = df['sim_cost_per_day']/df['cost']
+    #df = df.groupby(['file name'], as_index=False).sem()
+    #df = df.groupby(['file name'], as_index=False).mean()
+    df = df.groupby(['file name']).agg([np.mean, sem]).reset_index()
+    df.columns = ['file name', 'simulation cost mean', 'simulation cost stderr', 'cost', 'cost stderr', 'simulation cost mean per day', 'simulation cost std err']
+    df['cost_ratio'] = df['simulation cost mean per day']/df['cost']
 
     return df
 
 
  
 
-def run():
+def run_sim(sim_list,alpha=1):
     '''run simulation'''
     #global n_sims
     #global n_paths
@@ -172,6 +171,7 @@ def run():
             j=0
             while j < n_sims:    
                 sim = copy.deepcopy(sim_list[i])
+                #del sim_list[i]
                 sim.get_min_actv()
                 k=0       
                 while k < days:
@@ -186,11 +186,13 @@ def run():
                 #sim.plot_sim_backlog()
                 #sim.plot_sim_inventory()
                 j+=1
+                print(j)
                 sim_df.loc[len(sim_df)] = [sim.file_name, j, sim.sim_cost, sim.cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]
-                sim.cost
+                #print(sim.cost)
             i+=1
+            print(i)
         sum_sim_df = summarize_sims(sim_df)
-        sum_sim_df.to_csv('newsvendoroutput_summary.csv', sep='\t')
+        sum_sim_df.to_csv('newsvendoroutput_summary' + str(alpha) + '.csv', sep='\t')
         sim_df.to_csv(csv_name, sep='\t')
         print("Simulation passed")
     
@@ -203,7 +205,7 @@ def run():
 
 
 
-def loadpickles(path):
+def loadpickles(path,alpha=1):
     simlist = []
     if path == '':
         file_path = cwd + '/instances'
@@ -218,7 +220,7 @@ def loadpickles(path):
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
-                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}}))
+                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}},alpha=alpha))
             else:
                 print("No files found!")
 
@@ -234,11 +236,11 @@ def loadpickles(path):
 if __name__ == '__main__':
 
     begin_time = datetime.datetime.now()
-
+    print(begin_time)
 
     sim_list = loadpickles(path = '')
 
-    run()
+    run_sim()
 
     print(datetime.datetime.now() - begin_time)
 #THIS IS USED TO RUN FROM CMD LINE
