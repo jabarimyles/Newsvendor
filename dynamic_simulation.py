@@ -192,8 +192,8 @@ def run_sim(sim_list,alpha=1):
             i+=1
             print(i)
         sum_sim_df = summarize_sims(sim_df)
-        sum_sim_df.to_csv('newsvendoroutput_summary' + str(alpha) + '.csv', sep='\t')
-        sim_df.to_csv(csv_name, sep='\t')
+        sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
         print("Simulation passed")
     
 
