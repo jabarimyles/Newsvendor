@@ -332,84 +332,19 @@ indep_rand = np.random.RandomState(0)
 pos_cor_rand = np.random.RandomState(1)
 neg_cor_rand = np.random.RandomState(2)
 
+#### Run Controls ####
+run_ecom = False
+load_ecom = False
+run_manuf = False
+load_manuf = False
+run_prod = True
+load_prod = False
 
+# Press the green button in the gutter to run the script.
+if __name__ == '__main__':
 
-def prod_sim(load_prod):
-    ### Production simulation ###
-        output_prod = []
-        row = 0
-        for syst in systems_prod:
-            if not load_prod:
-                A_base = systems_prod[syst]
-                c_base = c_list_prod[syst]
-                q_base = q_list_prod[syst]
-                markup_base = markup_list_prod[syst]
-                prod_dem_rate = np.array(dem_rates_prod[syst])
-                [A, q, B, p, c] = prod_system_gen_share_inv(A_base, flex_deg, c_base, q_base, q_nhb_mult, markup_base)
-                product_n = len(prod_dem_rate)
-            for scale in dem_scale_prod:
-                for dist in dist_list:
-                    if not load_prod:
-                        if dist == 'indep':
-                            d = np.random.binomial(scale, prod_dem_rate, size=(W_prod, product_n))
-                        if dist == 'pos_cor':
-                            var = scale * (np.identity(product_n) + 0.5 * (
-                                        np.ones([product_n, product_n]) - np.identity(product_n)))
-                            d = np.maximum(0,
-                                           np.around(np.random.multivariate_normal(scale * prod_dem_rate, var, W_prod)))
-                        if dist == 'neg_cor':
-                            cor_p = np.minimum(1, np.sum(prod_dem_rate) * np.random.dirichlet(prod_dem_rate, size=W_prod))
-                            d = np.random.binomial(scale, cor_p)
-                        prod_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_prod, 'A': A, 'B': B}
-                        [prod_opt, r_opt, x_opt, y_opt, opt_time] = op.nn_opt(prod_inst, var_type='C', return_xy=True)
-                    # print("LP r:", r_opt)
-                    # print("time:", opt_time)
-                    # print("LP cost:", manuf_opt)
-                        prod_lp_sol = {'r': r_opt, 'x': x_opt, 'y': y_opt, 'cost': prod_opt, 'time': opt_time}
-                        with open("instances/prod" + str(row) + ".pkl", 'wb') as fpick:
-                            pickle.dump({'instance': prod_inst, 'LP_solution': prod_lp_sol}, fpick)
-                    else:
-                        with open("instances/prod" + str(row) + ".pkl", 'rb') as fpick:
-                            inst_sol = pickle.load(fpick)
-                        prod_inst = inst_sol['instance']
-                        prod_lp_sol = inst_sol['LP_solution']
-                        [prod_opt, r_opt, x_opt, y_opt, opt_time] = [prod_lp_sol['cost'], prod_lp_sol['r'],
-                                                                     prod_lp_sol['x'], prod_lp_sol['y'],
-                                                                     prod_lp_sol['time']]
-
-                    start = time.time()
-                    [min_b, beta_cst, r_rnd] = utils.min_beta_grid(r_opt, x_opt, y_opt, prod_inst, max_iter=10) #, plot_on=True)
-                    # print("Rounded r:", r_rnd)
-                    # print("Approximation Factor:", beta_cst/manuf_opt)
-                    beta_tm = time.time() - start
-
-                    start = time.time()
-                    [min_a, cor_cst, r_rnd] = utils.min_cor_grid(r_opt, x_opt, y_opt, prod_inst, max_iter=10)
-                    cor_tm = time.time() - start
-
-                    start = time.time()
-                    [min_a, min_b, mrkv_cst, r_rnd] = utils.min_mrkv_grid(r_opt, x_opt, y_opt, prod_inst, max_iter=5)
-                    mrkv_tm = time.time() - start
-
-                    start = time.time()
-                    [near_int_cst, r_rnd] = utils.rnd_near_int(r_opt, x_opt, y_opt, prod_inst)
-                    near_int_tm = time.time() - start
-
-                    output_prod.append([syst, 0, scale, dist, prod_opt, opt_time, beta_cst, cor_cst, mrkv_cst,
-                                        near_int_cst, beta_tm, cor_tm, mrkv_tm, near_int_tm])
-                    print(row)
-                    row += 1
-
-        labels = ['System', 'placeholder', 'demand_scale', 'distribution',
-                  'LP_cost', 'LP_time', 'beta_cost', 'cor_cost', 'markov_cost', 'near_int_cost', 'beta_time',
-                  'cor_time', 'markov_time', 'near_int_time']
-        output_prod = pd.DataFrame(output_prod, columns=labels)
-        flnm = 'prod_simulation_near_int.csv'
-        output_prod.to_csv(flnm)
-
-    
-### Ecommerce simulation ###
-def ecom_sim(load_ecom):
+    ### Ecommerce simulation ###
+    if run_ecom:
         output = []
         row = 0
         # if load_ecom:
@@ -492,8 +427,8 @@ def ecom_sim(load_ecom):
         flnm = 'ecom_simulation_near_int.csv'
         output.to_csv(flnm)
 
-### Manufacturing simulation ###
-def manuf_sim(load_manuf):
+    ### Manufacturing simulation ###
+    if run_manuf:
         output_manuf = []
         row = 0
         # for syst in {'auto'}:
@@ -572,7 +507,78 @@ def manuf_sim(load_manuf):
         flnm = 'manuf_simulation_near_int.csv'
         output_manuf.to_csv(flnm)
 
+    ### Production simulation ###
+    if run_prod:
+        output_prod = []
+        row = 0
+        for syst in systems_prod:
+            if not load_prod:
+                A_base = systems_prod[syst]
+                c_base = c_list_prod[syst]
+                q_base = q_list_prod[syst]
+                markup_base = markup_list_prod[syst]
+                prod_dem_rate = np.array(dem_rates_prod[syst])
+                [A, q, B, p, c] = prod_system_gen_share_inv(A_base, flex_deg, c_base, q_base, q_nhb_mult, markup_base)
+                product_n = len(prod_dem_rate)
+            for scale in dem_scale_prod:
+                for dist in dist_list:
+                    if not load_prod:
+                        if dist == 'indep':
+                            d = np.random.binomial(scale, prod_dem_rate, size=(W_prod, product_n))
+                        if dist == 'pos_cor':
+                            var = scale * (np.identity(product_n) + 0.5 * (
+                                        np.ones([product_n, product_n]) - np.identity(product_n)))
+                            d = np.maximum(0,
+                                           np.around(np.random.multivariate_normal(scale * prod_dem_rate, var, W_prod)))
+                        if dist == 'neg_cor':
+                            cor_p = np.minimum(1, np.sum(prod_dem_rate) * np.random.dirichlet(prod_dem_rate, size=W_prod))
+                            d = np.random.binomial(scale, cor_p)
+                        prod_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_prod, 'A': A, 'B': B}
+                        [prod_opt, r_opt, x_opt, y_opt, opt_time] = op.nn_opt(prod_inst, var_type='C', return_xy=True)
+                    # print("LP r:", r_opt)
+                    # print("time:", opt_time)
+                    # print("LP cost:", manuf_opt)
+                        prod_lp_sol = {'r': r_opt, 'x': x_opt, 'y': y_opt, 'cost': prod_opt, 'time': opt_time}
+                        with open("instances/prod" + str(row) + ".pkl", 'wb') as fpick:
+                            pickle.dump({'instance': prod_inst, 'LP_solution': prod_lp_sol}, fpick)
+                    else:
+                        with open("instances/prod" + str(row) + ".pkl", 'rb') as fpick:
+                            inst_sol = pickle.load(fpick)
+                        prod_inst = inst_sol['instance']
+                        prod_lp_sol = inst_sol['LP_solution']
+                        [prod_opt, r_opt, x_opt, y_opt, opt_time] = [prod_lp_sol['cost'], prod_lp_sol['r'],
+                                                                     prod_lp_sol['x'], prod_lp_sol['y'],
+                                                                     prod_lp_sol['time']]
 
+                    start = time.time()
+                    [min_b, beta_cst, r_rnd] = utils.min_beta_grid(r_opt, x_opt, y_opt, prod_inst, max_iter=10) #, plot_on=True)
+                    # print("Rounded r:", r_rnd)
+                    # print("Approximation Factor:", beta_cst/manuf_opt)
+                    beta_tm = time.time() - start
+
+                    start = time.time()
+                    [min_a, cor_cst, r_rnd] = utils.min_cor_grid(r_opt, x_opt, y_opt, prod_inst, max_iter=10)
+                    cor_tm = time.time() - start
+
+                    start = time.time()
+                    [min_a, min_b, mrkv_cst, r_rnd] = utils.min_mrkv_grid(r_opt, x_opt, y_opt, prod_inst, max_iter=5)
+                    mrkv_tm = time.time() - start
+
+                    start = time.time()
+                    [near_int_cst, r_rnd] = utils.rnd_near_int(r_opt, x_opt, y_opt, prod_inst)
+                    near_int_tm = time.time() - start
+
+                    output_prod.append([syst, 0, scale, dist, prod_opt, opt_time, beta_cst, cor_cst, mrkv_cst,
+                                        near_int_cst, beta_tm, cor_tm, mrkv_tm, near_int_tm])
+                    print(row)
+                    row += 1
+
+        labels = ['System', 'placeholder', 'demand_scale', 'distribution',
+                  'LP_cost', 'LP_time', 'beta_cost', 'cor_cost', 'markov_cost', 'near_int_cost', 'beta_time',
+                  'cor_time', 'markov_time', 'near_int_time']
+        output_prod = pd.DataFrame(output_prod, columns=labels)
+        flnm = 'prod_simulation_near_int.csv'
+        output_prod.to_csv(flnm)
 
     # G = nx.algorithms.bipartite.matrix.from_biadjacency_matrix(sp.csr_matrix(A))
     # top = nx.bipartite.sets(G)[0]
@@ -675,9 +681,3 @@ def manuf_sim(load_manuf):
     # print("beta:", min_b)
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
-        
-    
-    
-        
-
-    
