@@ -1,16 +1,35 @@
 import argparse
 import pickle
 import os
+import sys
 import numpy as np
-#import matplotlib.pyplot as plt
+import csv
+import copy
+import pdb
+import pandas as pd
+import datetime
+import matplotlib.pyplot as plt
+from scipy.stats import sem
+import cProfile
+import time
+#from optimals import sec_stg, ato_opt, nn_opt
+
+seed_rand = np.random.RandomState(0)
 
 cwd = os.getcwd()
-
 
 n_sims = 1000
 days = 100
 
-#track costs over sample paths, 
+
+csv_name = 'newsvendoroutput.csv'
+
+
+#product shortage cost as backlog cost
+#percentage of holding cost is ordering cost
+#exclude manuf
+#ecom app and produc application
+
 
 #m num of resources - len of c
 #c_i is ordering cost (c in paper)
@@ -28,15 +47,13 @@ days = 100
 #r (B in pickle) is S_i in paper, S-i is justt how much we want on hand at the end of the day
 #page 6 equation k(j) argmin , for product j what is its lowest cost activity to fill it. q_k + \sum_i a_ik c_i
 
-#x in pickle is z in paper, 
 
-#inventory should stay constant
-#backlog shoudl grow
+
 
 
 class Simulation(object):
 
-    def __init__(self, dictionary):
+    def __init__(self, dictionary,alpha):
 
         # Set attributes from dictionary
         for key in dictionary:
@@ -45,67 +62,45 @@ class Simulation(object):
         self.I_hist = np.zeros(dictionary['A'].shape[0])
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
-        self.x = np.zeros(len(self.c)) 
-        self.z = np.zeros(len(self.q)) #processing activities
-        self.h = self.c
-        self.cost = 0
+        self.z = np.zeros(len(self.c)) #processing activities
+        self.h = self.c * alpha
+        self.sim_cost = 0
+        self.ordering_cost = 0
+        self.backlog_cost = 0
+        self.holding_cost = 0
+        self.fulfillment_cost = 0
+        self.sim_cost_hist = []
+
         self.demand = np.zeros(dictionary['p'].shape[0])
+        self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
+        self.Xi = np.zeros(len(self.q)) 
 
+    def get_min_actv(self):
+        for i in range(self.p.shape[0]):
+            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
+            cost_dict = {}
+            for j in pos_actvs:
+                actv_cost = np.matmul(self.c ,self.A[:,j])
+                cost_dict[j] = self.q[j] + actv_cost
+            self.min_actv[min(cost_dict,key=cost_dict.get),i] += 1 #lowest activity for given product
 
-    # Getter/setter stuff
-    #@property
     def smart_order(self):
-        #res_to_prod = np.matmul(self.A, self.B)
-#processing + sum(c*a) c is per unit odering cost, a is the resource requirements for each processing activity
-        #self.r - self.I + 
-        #for k in range(self.r.shape[0]):
-        min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
+        self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
+        self.sim_cost += np.matmul(self.z, self.c) #ordering cost
+        self.ordering_cost += np.matmul(self.z, self.c)
 
-        for i in range(self.p.shape[0]):
-            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
-            cost_dict = {}
-            for j in pos_actvs:
-                actv_cost = np.matmul(self.c ,self.A[:,j])
-                cost_dict[j] = self.q[j] + actv_cost
-            min_actv[j,i] += 1 #lowest activity for given product
-            #FIX BEFORE LINE 70
-
-        self.z = self.r[i] - self.I[i] + np.matmul(self.A,np.matmul(min_actv, self.BL))
-
-        self.cost += np.matmul(self.z, self.c) #updates cost
-
-
-               # np.where(self.A[:,i] != 0) #resource for each pos_actvs
-            #cheapest_activity = low_actvs[0][np.argmin(self.q[low_actvs])]
-            #cheapest_act_cost = self.q[cheapest_activity]
-
-        #    for j in prods:
-        #        for k in 
-        #        actv = np.where(self.A[])
-    
-    def update_cost(self):
-        d=c+c
-
-    def smart_fulfillment(self):
-        min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
-
-        for i in range(self.p.shape[0]):
-            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
-            cost_dict = {}
-            for j in pos_actvs:
-                actv_cost = np.matmul(self.c ,self.A[:,j])
-                cost_dict[j] = self.q[j] + actv_cost
-            min_actv[j,i] += 1 #lowest activity for given product
-        
-        t + np.matmul(min_actv, self.BL) #Figure out what the activity processing matrix is
-
-        #self.y[self.demand_index] 
+    def smart_fulfillment(self):   
+        num_fill =  np.matmul(self.min_actv, self.BL)
+        self.Xi += num_fill  #Update fulfilled
+        self.sim_cost += np.sum(self.q * self.Xi) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.Xi)
 
 
     def demand_draw(self):
-        index = np.random.choice(self.mu.shape[0])
+        index = seed_rand.randint(self.mu.shape[0])
         self.demand_index = index
         self.demand = self.d[index]
+        self.Xi = copy.deepcopy(self.x[index])
         
     
     def get_cheapest(self):
@@ -114,107 +109,133 @@ class Simulation(object):
 
 
     def update_inventory(self):
-        self.I += self.x - np.matmul(self.A, self.z)
+        self.I += self.z - np.matmul(self.A, self.Xi)
+        #if np.any(self.I < 0):
+        #    pdb.set_trace()
+        self.sim_cost += np.matmul(self.I, self.h)
+        self.holding_cost += np.matmul(self.I, self.h) #holding cost
         self.I_hist = np.vstack([self.I_hist, self.I])
 
 
     def update_backlog(self):
-        self.BL += self.demand - np.matmul(self.z, self.B)
+        self.BL += self.demand - np.matmul(self.Xi, self.B)
+        self.sim_cost += np.matmul(self.BL, self.p) #np.any(self.BL < 0)
+        self.backlog_cost += np.matmul(self.BL, self.p) #backlog cost
         self.BL_hist = np.vstack([self.BL_hist, self.BL])
-
+        
     def plot_sim_backlog(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
+        #fig = plt.figure()
+        #fig.add_subplot(111)
         plt.plot(self.BL_hist)
-        plt.show()
+        plt.title(self.file_name)
+        plt.show(block=False)
+
+
+
 
     def plot_sim_inventory(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
+        #fig = plt.figure()
+        #ax = fig.add_subplot(1, 1, 1)
         plt.plot(self.I_hist)
         plt.show()
+        #plt.savefig("temp.png")
 
-''' 
-    def get_c(self):
-        return self.c
-  
-    def set_c(self, x):
-        self.c = x
+    def output_to_csv(self, sim_df):
+            csv_file = open(csv_name, "w")
+            writer = csv.writer(csv_file) 
+            #writer.writerow(fields)
+            #csv_file = open(csv_name, "a")
+            writer = csv.writer(csv_file) 
+            csv_file.close()
 
-    def get_q(self):
-        return self.q
     
-    def set_q(self, x):
-        self.q = x
     
-    def get_p(self):
-        return self.p
-    
-    def set_p(self, x):
-        self.p = x
+def summarize_sims(df):
+    df = df[['file name', 'simulation cost', 'cost', 'upper cost']]
+    df['simulation cost'] = pd.to_numeric(df['simulation cost'])
+    df['cost'] = pd.to_numeric(df['cost'])
+    df['upper cost'] = pd.to_numeric(df['upper cost'])
+    df['sim_cost_per_day'] = df['simulation cost']/days
+    #df = df.groupby(['file name'], as_index=False).sem()
+    #df = df.groupby(['file name'], as_index=False).mean()
+    df = df.groupby(['file name']).agg([np.mean, sem]).reset_index()
+    df.columns = ['file name', 'simulation cost mean', 'simulation cost stderr', 'lower cost mean', 'lower cost stderr','upper cost mean' ,  'cost stderr', 'simulation cost mean per day', 'simulation cost std err']
+    df['lower cost ratio'] = df['simulation cost mean per day']/df['lower cost mean']
+    df['upper cost ratio'] = df['simulation cost mean per day']/df['upper cost mean']
 
-    def get_d(self):
-        return self.d
-    
-    def set_d(self, x):
-        self.d = x
-    
-    def get_mu(self):
-        return self.mu
-    
-    def set_mu(self, x):
-        self.mu = x
-    
-    def get_A(self):
-        return self.A
-    
-    def set_A(self, x):
-        self.A = x
-    
-    def get_B(self):
-        return self.B
-    
-    def set_B(self, x):
-        self.B = x
-   ''' 
+    return df
 
-def run():
+def plot_sim_cost_hist(sim_df, days,j):
+        #fig = plt.figure()
+        #fig.add_subplot(111)
+    time.sleep(1.5)
+    print(str(j) + ':' + str(np.mean(sim_df['simulation cost']/days)/np.mean(sim_df['cost'])))
+    #plt.plot(np.mean(sim_df['simulation cost']/days)/np.mean(sim_df['cost']))
+    #plt.title(sim_df['file name'].iloc[0])
+    #plt.show(block=False)
+ 
+
+def run_sim(sim_list,alpha=1):
     '''run simulation'''
     #global n_sims
     #global n_paths
     n_params = len(sim_list)
+    column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost']
+    sim_df = pd.DataFrame(columns = column_names)
 
-    i,j,k = 1,1,1
+    i=0
 
     try:
         while i < n_params:
-            while j < n_sims:
+            
+            j=0
+            while j < n_sims:    
+                sim = copy.deepcopy(sim_list[i])
+                #del sim_list[i]
+                sim.get_min_actv()
+                k=0       
                 while k < days:
-                    sim = sim_list[i]
-                    sim.smart_order()
-                    sim.demand_draw()
-                    sim.smart_fulfillment()
-                    sim.update_backlog()
-                    sim.update_inventory()
+                        sim.smart_order()
+                        sim.demand_draw()
+                        sim.smart_fulfillment()
+                        sim.update_backlog()
+                        sim.update_inventory()
 
-                    k+=1
+                        k+=1
+                        
                     
-                sim.plot_sim_backlog()
-                sim.plot_sim_inventory()
+                #sim.plot_sim_backlog()
+                #sim.plot_sim_inventory()
+                
                 j+=1
+                #print(j)
+
+                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]]), columns=sim_df.columns)
+                sim_df = pd.concat([sim_df,new_row], ignore_index=True)
+
+                #plot_sim_cost_hist(sim_df, days,j)
+                #print(sim.cost)
             i+=1
+            print(str(i) + '/' + str(n_params), end="")
+            print("\r", end="")
+        sum_sim_df = summarize_sims(sim_df)
+        sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
+        print("Simulation passed")
+    
 
     except:
         print("Simulation failed")
+    
     
 
 
 
 
-def loadpickles(path):
+def loadpickles(path,alpha=1):
     simlist = []
     if path == '':
-        file_path = cwd + '/instances'
+        file_path = cwd + '/instances'+str(int(alpha*100))
     else: 
         file_path = path
 
@@ -226,23 +247,29 @@ def loadpickles(path):
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
-                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance']}))
+                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}},alpha=alpha))
             else:
                 print("No files found!")
 
 
     return simlist
 
+###cost is a lower bound on average of sample paths
+###ratio should be greater than 1, must be less than 2
+###
 
 
 
 if __name__ == '__main__':
 
+    begin_time = datetime.datetime.now()
+    print(begin_time)
+
     sim_list = loadpickles(path = '')
 
-    run()
+    run_sim()
 
-    
+    print(datetime.datetime.now() - begin_time)
 #THIS IS USED TO RUN FROM CMD LINE
 #    parser = argparse.ArgumentParser(description='Get path to simulation information.')
 

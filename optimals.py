@@ -193,3 +193,92 @@ def nn_opt(nn_inst, var_type, return_xy=False):
     else:
         del nn
         return [nn_opt, r_opt, opt_time]
+
+def nn_opt_high(nn_inst, var_type, return_xy=False, delta = 0.95):
+    """ solve ATO problem """
+    # var_type will be the gurobi vtype variable, 'C'->continuous, 'I'->integer
+    # nn_inst is: {'c': , 'q': , 'p': , 'd': , 'mu': , 'A': , 'B': }
+    c = nn_inst['c']
+    q = nn_inst['q']
+    p = nn_inst['p']
+    d = nn_inst['d']
+    mu = nn_inst['mu']
+    A = nn_inst['A']
+    B = nn_inst['B']
+
+    [M, L] = A.shape
+    [W, N] = d.shape
+
+    #check if b is ever positive
+
+
+    components = range(M)
+    activities = range(L)
+    products = range(N)
+    scenarios = range(W)
+
+    start = time.time()
+    nn = Model('NN')
+    # nn.Params.Method = 1
+    r_o = {}
+    x_o = {}
+    y_o = {}
+    b_o = {}
+
+    for l in products:
+        b_o[l] = nn.addVar(vtype=var_type, name='b_%s' % l, obj=p[l]*(1-delta), lb=0)
+    for i in components:
+        r_o[i] = nn.addVar(vtype=var_type, name='r_%s' % i, obj=c[i], lb=0)
+    for w in scenarios:
+        for k in activities:
+            x_o[w, k] = nn.addVar(vtype=var_type, name='x_%s' % k + '%s' % w, obj=q[k] * mu[w], lb=0)  # , ub=d[w, j])
+        for j in products:
+            y_o[w, j] = nn.addVar(vtype=var_type, name='y_%s' % j + '%s' % w, obj=p[j] * mu[w] * delta, lb=0)  # , ub=d[w,j])
+    nn.update()
+
+    cinv_o = {}  # inventory
+    cdem_o = {}  # inventory
+    for w in scenarios:
+        xvar = [x_o[w, k] for k in activities]
+        for i in components:
+            cinv_o[i, w] = nn.addConstr(LinExpr(A[i, :], xvar) <= r_o[i], name='cinv_o_%s' % i + '%s' % w)
+        for j in products:
+            cdem_o[w, j] = nn.addConstr(LinExpr(B[:, j], xvar) + y_o[w, j] == d[w,j]+b_o[j], name='cdem_o_%s' % j + '%s' % w)
+    nn.update()
+
+    nn.setAttr("ModelSense", GRB.MINIMIZE)
+    nn.setParam('OutputFlag', False)
+    nn.optimize()
+
+    opt_time = time.time() - start
+
+    nn_opt = nn.ObjVal
+
+    r_opt = np.empty(M)
+    for i in components:
+        r_opt[i] = r_o[i].x
+
+    ##    # remove variables and constraints
+    ##    for v in range(nn.NumVars):
+    ##        nn.remove(nn.getVars()[v])
+    ##    for c in range(nn.NumConstrs):
+    ##        nn.remove(nn.getConstrs()[c])
+    ##    nn.update()
+
+    if return_xy:
+        x_opt = np.empty([W, L])
+        y_opt = np.empty([W, N])
+        b_opt = np.empty([W, N])
+        for w in scenarios:
+            for k in activities:
+                x_opt[w, k] = x_o[w, k].x
+            for j in products:
+                y_opt[w, j] = y_o[w, j].x
+            #for j in products:
+            #    b_opt[w] = b_o[w].x
+
+        del nn
+        return [nn_opt, r_opt, x_opt, y_opt, opt_time]
+    else:
+        del nn
+        return [nn_opt, r_opt, opt_time]
