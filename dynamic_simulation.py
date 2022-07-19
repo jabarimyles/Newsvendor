@@ -18,11 +18,15 @@ seed_rand = np.random.RandomState(0)
 
 cwd = os.getcwd()
 
-n_sims = 1000
-days = 100
+n_sims = 2
+days = 10
 
 
 csv_name = 'newsvendoroutput.csv'
+
+alphas = [ 2, 3, 4, 5]
+#
+betas = [.5, .8, .9, 1] 
 
 
 #product shortage cost as backlog cost
@@ -32,6 +36,7 @@ csv_name = 'newsvendoroutput.csv'
 
 
 #m num of resources - len of c
+
 #c_i is ordering cost (c in paper)
 #p_i is backlog cost (b in paper)
 #h_i is holding cost (h in paper)
@@ -175,7 +180,7 @@ def plot_sim_cost_hist(sim_df, days,j):
     #plt.show(block=False)
  
 
-def run_sim(sim_list,alpha=1):
+def run_sim(sim_list,alpha=1, beta=1, novel=False):
     '''run simulation'''
     #global n_sims
     #global n_paths
@@ -219,8 +224,13 @@ def run_sim(sim_list,alpha=1):
             print(str(i) + '/' + str(n_params), end="")
             print("\r", end="")
         sum_sim_df = summarize_sims(sim_df)
-        sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
-        sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
+        if novel == False:
+            sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+            sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
+        elif novel == True:
+            sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '_novel' + str(int(beta*100)) + '.csv', sep='\t')
+            sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '_novel' + str(int(beta*100)) + '.csv', sep='\t')
+
         print("Simulation passed")
     
 
@@ -254,6 +264,59 @@ def loadpickles(path,alpha=1):
 
     return simlist
 
+def get_novels(path = '', novel=False):
+
+    for alpha in alphas:
+        
+        for beta in betas:
+            costs_df = pd.DataFrame(columns = ['lower cost mean'+str(beta), 'file name'])
+            if path == '':
+                file_path = cwd + '/instances'+str(int(alpha*100)) 
+            else: 
+                file_path = path
+            
+            for root, dir, files, in os.walk(file_path + '_novel' + str(int(beta*100)) ):
+                for file in files:
+                    if file.endswith(".pkl"):
+                        pklfile = file
+                        print(pklfile)
+                        openpkl = open(file_path + '/' + pklfile , 'rb')
+                        opennovelpkl = open(file_path + '_novel' + str(int(beta*100)) + '/' + pklfile , 'rb')
+                        novelpkl = pickle.load(opennovelpkl)
+                        costs_df.loc[len(costs_df)] = [novelpkl['LP_solution']['cost'], pklfile]
+            costs_df.to_csv('novels' + str(int(alpha*100)) + '_novel' + str(int(beta*100)) + '.csv', sep='\t')
+
+
+def comparepickles(path,alpha=1, beta=1, novel=False):
+    novel_greater = 0
+    if path == '':
+        file_path = cwd + '/instances'+str(int(alpha*100))
+    else: 
+        file_path = path
+
+    for root, dir, files, in os.walk(file_path + '_novel' + str(int(beta*100)) ):
+        for file in files:
+            if file.endswith(".pkl"):
+                pklfile = file
+                print(pklfile)
+                openpkl = open(file_path + '/' + pklfile , 'rb')
+                opennovelpkl = open(file_path + '_novel' + str(int(beta*100)) + '/' + pklfile , 'rb')
+                oldpkl = pickle.load(openpkl)
+                novelpkl = pickle.load(opennovelpkl)
+                print(str(novelpkl['LP_solution']['cost']) + ' : ' + str(oldpkl['LP_solution']['cost']))
+                if novelpkl['LP_solution']['cost'] > oldpkl['LP_solution']['cost']:
+                    novel_greater +=1
+        
+                
+
+                #print(loadedpkl)
+                #simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}},alpha=alpha))
+            else:
+                print("No files found!")
+            print(str(novel_greater) + ' greater!')
+
+
+    return None
 ###cost is a lower bound on average of sample paths
 ###ratio should be greater than 1, must be less than 2
 ###
@@ -263,11 +326,13 @@ def loadpickles(path,alpha=1):
 if __name__ == '__main__':
 
     begin_time = datetime.datetime.now()
-    print(begin_time)
+    #print(begin_time)
 
-    sim_list = loadpickles(path = '')
+    #sim_list = loadpickles(path = '')
 
-    run_sim()
+    get_novels(path='')
+
+    #run_sim()
 
     print(datetime.datetime.now() - begin_time)
 #THIS IS USED TO RUN FROM CMD LINE

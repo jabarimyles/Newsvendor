@@ -274,8 +274,9 @@ def nn_opt_high(nn_inst, var_type, return_xy=False, delta = 0.95):
                 x_opt[w, k] = x_o[w, k].x
             for j in products:
                 y_opt[w, j] = y_o[w, j].x
-            #for j in products:
-            #    b_opt[w] = b_o[w].x
+            for j in products:
+                b_opt[w,j] = b_o[j].x
+                print(b_o[j].x)
 
         del nn
         return [nn_opt, r_opt, x_opt, y_opt, opt_time]
