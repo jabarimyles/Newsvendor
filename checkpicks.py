@@ -16,7 +16,7 @@ load_manuf = False
 run_prod = True
 load_prod = False
 
-alphas = .03
+alphas = .1
 
 path = ''
 
@@ -24,7 +24,7 @@ cwd = os.getcwd()
 
 new_path = cwd + '/instances'
 
-def checkpickles(path='', alpha=1):
+def checkpickles(path='', alpha=.1):
 
     new_path = cwd + '/instances'+str(int(alpha*100))
 

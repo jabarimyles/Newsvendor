@@ -276,10 +276,12 @@ def nn_opt_high(nn_inst, var_type, return_xy=False, delta = 0.95):
                 y_opt[w, j] = y_o[w, j].x
             for j in products:
                 b_opt[w,j] = b_o[j].x
-                print(b_o[j].x)
+                
 
         del nn
         return [nn_opt, r_opt, x_opt, y_opt, opt_time]
     else:
         del nn
         return [nn_opt, r_opt, opt_time]
+
+    

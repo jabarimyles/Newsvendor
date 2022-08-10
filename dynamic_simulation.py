@@ -13,20 +13,21 @@ from scipy.stats import sem
 import cProfile
 import time
 #from optimals import sec_stg, ato_opt, nn_opt
+pd.options.mode.chained_assignment = None  # default='warn'
 
 seed_rand = np.random.RandomState(0)
 
 cwd = os.getcwd()
 
-n_sims = 2
-days = 10
+n_sims = 1000
+days = 100
 
 
 csv_name = 'newsvendoroutput.csv'
 
-alphas = [ 2, 3, 4, 5]
+#alphas = [ 2, 3, 4, 5]
 #
-betas = [.5, .8, .9, 1] 
+#betas = [.5, .8, .9, 1] 
 
 
 #product shortage cost as backlog cost
@@ -156,19 +157,25 @@ class Simulation(object):
     
     
 def summarize_sims(df):
-    df = df[['file name', 'simulation cost', 'cost', 'upper cost']]
+    df = df.drop(['sim number', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'], axis=1)
     df['simulation cost'] = pd.to_numeric(df['simulation cost'])
     df['cost'] = pd.to_numeric(df['cost'])
     df['upper cost'] = pd.to_numeric(df['upper cost'])
+    #df['largest lower'] = pd.to_numeric(df['largest lower'])
     df['sim_cost_per_day'] = df['simulation cost']/days
     #df = df.groupby(['file name'], as_index=False).sem()
     #df = df.groupby(['file name'], as_index=False).mean()
-    df = df.groupby(['file name']).agg([np.mean, sem]).reset_index()
-    df.columns = ['file name', 'simulation cost mean', 'simulation cost stderr', 'lower cost mean', 'lower cost stderr','upper cost mean' ,  'cost stderr', 'simulation cost mean per day', 'simulation cost std err']
-    df['lower cost ratio'] = df['simulation cost mean per day']/df['lower cost mean']
-    df['upper cost ratio'] = df['simulation cost mean per day']/df['upper cost mean']
+    cols = df.columns.drop(['file name', 'largest lower'])
+    df[cols] = df[cols].apply(pd.to_numeric)
+    df = df.groupby(['file name', 'largest lower']).agg([np.mean, sem])
+    df.columns = df.columns.map('_'.join)
+    df = df.reset_index()
+    df['lower cost ratio'] = df['sim_cost_per_day_mean']/df['cost_mean']
+    df['upper cost ratio'] = df['sim_cost_per_day_mean']/df['upper cost_mean']
 
-    return df
+    df_out = df.drop(['upper cost_sem', 'upper cost_mean', 'upper cost ratio'], axis=1)
+
+    return df_out
 
 def plot_sim_cost_hist(sim_df, days,j):
         #fig = plt.figure()
@@ -180,12 +187,12 @@ def plot_sim_cost_hist(sim_df, days,j):
     #plt.show(block=False)
  
 
-def run_sim(sim_list,alpha=1, beta=1, novel=False):
+def run_sim(sim_list,alpha=1, novel=False):
     '''run simulation'''
     #global n_sims
     #global n_paths
     n_params = len(sim_list)
-    column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost']
+    column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim_list[0].cost.keys())
     sim_df = pd.DataFrame(columns = column_names)
 
     i=0
@@ -196,6 +203,7 @@ def run_sim(sim_list,alpha=1, beta=1, novel=False):
             j=0
             while j < n_sims:    
                 sim = copy.deepcopy(sim_list[i])
+                column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim.cost.keys())
                 #del sim_list[i]
                 sim.get_min_actv()
                 k=0       
@@ -208,6 +216,7 @@ def run_sim(sim_list,alpha=1, beta=1, novel=False):
 
                         k+=1
                         
+                        
                     
                 #sim.plot_sim_backlog()
                 #sim.plot_sim_inventory()
@@ -215,21 +224,20 @@ def run_sim(sim_list,alpha=1, beta=1, novel=False):
                 j+=1
                 #print(j)
 
-                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]]), columns=sim_df.columns)
+                sim.cost_dict = copy.deepcopy(sim.cost)
+                sim.largest_lower = max(sim.cost, key=sim.cost.get)
+                sim.cost = max(sim.cost.values())
+                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.largest_lower, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]+ list(sim.cost_dict.values())]), columns=sim_df.columns)
                 sim_df = pd.concat([sim_df,new_row], ignore_index=True)
 
                 #plot_sim_cost_hist(sim_df, days,j)
                 #print(sim.cost)
             i+=1
-            print(str(i) + '/' + str(n_params), end="")
+            print("i:" + str(i) + '/' + str(n_params), end="")
             print("\r", end="")
         sum_sim_df = summarize_sims(sim_df)
-        if novel == False:
-            sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
-            sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
-        elif novel == True:
-            sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '_novel' + str(int(beta*100)) + '.csv', sep='\t')
-            sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '_novel' + str(int(beta*100)) + '.csv', sep='\t')
+        sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
 
         print("Simulation passed")
     
@@ -253,7 +261,7 @@ def loadpickles(path,alpha=1):
         for file in files:
             if file.endswith(".pkl"):
                 pklfile = file
-                print(pklfile)
+                #print(pklfile)
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
@@ -326,13 +334,13 @@ def comparepickles(path,alpha=1, beta=1, novel=False):
 if __name__ == '__main__':
 
     begin_time = datetime.datetime.now()
-    #print(begin_time)
+    print(begin_time)
 
     #sim_list = loadpickles(path = '')
 
     get_novels(path='')
 
-    #run_sim()
+    run_sim()
 
     print(datetime.datetime.now() - begin_time)
 #THIS IS USED TO RUN FROM CMD LINE
