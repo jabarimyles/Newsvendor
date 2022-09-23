@@ -26,18 +26,19 @@ new_path = cwd + '/instances'
 
 def checkpickles(path='', alpha=.1):
 
-    new_path = cwd + '/instances'+str(int(alpha*100))
+    new_path = cwd + '/instances' #+str(int(alpha*100))
 
     Qs = []
 
     for root, dir, files, in os.walk(new_path):
         for file in files:
-            if file.endswith(".pkl"):
+            if file.startswith("example"):
                 pklfile = file
                 print(pklfile)
                 openpkl = open(new_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
-                Qs.append(loadedpkl['instance']['q'])
+                a=1
+                #Qs.append(loadedpkl['instance']['q'])
     
     file = open('Qs' + str(alpha) + '.csv', 'w+', newline ='') 
     with file:     

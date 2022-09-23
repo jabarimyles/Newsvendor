@@ -80,6 +80,7 @@ class Simulation(object):
         self.demand = np.zeros(dictionary['p'].shape[0])
         self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
         self.Xi = np.zeros(len(self.q)) 
+        self.num_fill = np.zeros(len(self.q)) 
 
     def get_min_actv(self):
         for i in range(self.p.shape[0]):
@@ -94,6 +95,12 @@ class Simulation(object):
         self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
         self.sim_cost += np.matmul(self.z, self.c) #ordering cost
         self.ordering_cost += np.matmul(self.z, self.c)
+    
+    def simple_smart_order(self):
+        self.z[0] = self.BL[0] + min(self.BL[1],1)
+        self.z[1] = max(0, self.BL[1]-1)
+        self.sim_cost += np.matmul(self.z, self.c) #ordering cost
+        self.ordering_cost += np.matmul(self.z, self.c)
 
     def smart_fulfillment(self):   
         num_fill =  np.matmul(self.min_actv, self.BL)
@@ -101,9 +108,16 @@ class Simulation(object):
         self.sim_cost += np.sum(self.q * self.Xi) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.Xi)
 
+    def simple_smart_fulfillment(self):   
+        self.Xi[0] = min(self.I[0]+self.z[0], self.BL[0]+self.demand[0])
+        self.Xi[1] = min(max(self.I[0]+self.z[0]-self.BL[0]-self.demand[0],0), max(self.BL[1]+self.demand[1]-self.I[1]-self.z[1],0))
+        self.Xi[2] = min(self.I[1]+self.z[1], self.BL[1]+self.demand[1])
+        #self.Xi += self.num_fill  #Update fulfilled
+        self.sim_cost += np.sum(self.q * self.Xi) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.Xi)
 
     def demand_draw(self):
-        index = seed_rand.randint(self.mu.shape[0])
+        index = seed_rand.choice(self.mu.shape[0], p=self.mu)
         self.demand_index = index
         self.demand = self.d[index]
         self.Xi = copy.deepcopy(self.x[index])
@@ -187,7 +201,7 @@ def plot_sim_cost_hist(sim_df, days,j):
     #plt.show(block=False)
  
 
-def run_sim(sim_list,alpha=1, novel=False):
+def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
     '''run simulation'''
     #global n_sims
     #global n_paths
@@ -208,9 +222,18 @@ def run_sim(sim_list,alpha=1, novel=False):
                 sim.get_min_actv()
                 k=0       
                 while k < days:
-                        sim.smart_order()
+                        if optimal_policy:
+                            sim.simple_smart_order()
+                        else:
+                            sim.smart_order()
+
                         sim.demand_draw()
-                        sim.smart_fulfillment()
+                        
+                        if optimal_policy:
+                            sim.simple_smart_fulfillment()
+                        else:
+                            sim.smart_fulfillment()
+
                         sim.update_backlog()
                         sim.update_inventory()
 
@@ -266,8 +289,7 @@ def loadpickles(path,alpha=1):
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
                 simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}},alpha=alpha))
-            else:
-                print("No files found!")
+
 
 
     return simlist

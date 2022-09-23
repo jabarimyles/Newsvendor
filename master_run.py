@@ -2,14 +2,17 @@ from pyparsing import alphanums
 from dynamic_simulation import *
 from optimals import *
 from simulation import *
-
 cwd = os.getcwd()
 
 solve_LP = True 
 
 novel_lower = False
 
+# Controls whether we just run the simulation or modpickle files and run with those
 just_sim = False
+
+# Whether we solved for the optimal policy, this is almost never True
+optimal_policy=False
 
 #### Run Controls ####
 run_ecom = False
@@ -19,21 +22,20 @@ load_manuf = False
 run_prod = True
 load_prod = False
 
-
-alphas = [.75] 
-
+# Parameters the simulation runs over
+alphas = [.25]
 betas = [.5, .8, .9, 1] 
-
 deltas = [1, .99, .97, .95, .9, .85, .8]
 
+# Specify output path, if blank it goes to cwd
 path = ''
-
 cwd = os.getcwd()
-
 new_path = cwd + '/instances'
 
+#initialize simulation dataframe and columns of interest to summarize
 column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'upper cost' ,'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost']
 sim_df = pd.DataFrame(columns = column_names)
+
 
 def min_act_cost(pkl, novel=False, this_beta=1):
         pkl['instance']['min_actv'] = np.zeros((pkl['instance']['q'].shape[0],pkl['instance']['p'].shape[0]))
@@ -56,7 +58,7 @@ def min_act_cost(pkl, novel=False, this_beta=1):
         
         return min_cost
 
-
+# Takes a path to a folder with existing pickle files to modify. Alpha is our holding cost percentage 
 def modpickles(path, alpha=1, novel=True):
     
     if path == '':
@@ -114,8 +116,61 @@ def modpickles(path, alpha=1, novel=True):
             pickle.dump(newpkl, f)
     else:
         print("Not a pickle file: "  + file)
+
+
     
+def simple_mod(path, alpha=1, novel=True, n=1):
     
+    if path == '':
+        new_path = cwd + '/instances'+str(int(alpha*100))
+    else: 
+        new_path = path + '/instances'+str(int(alpha*100))
+    if file.endswith(".pkl"):
+                
+        pklfile = file
+        openpkl = open(orig_path + '/' + pklfile , 'rb')
+        loadedpkl = pickle.load(openpkl)
+        newpkl = copy.deepcopy(loadedpkl)
+        lower_list = []
+
+        lower_dict = {}
+    
+        run='instances'
+        
+        loadedpkl['instance']['A']
+
+        loadedpkl['instance']['B']
+
+#B is a qxp matrix linking activities to products
+#A is a cxq matrix mapping resources to activities
+
+#new B (n^2x n) mapping  to demand in each region
+
+#new A (nxn^2) mapping inventory of each item at each warehouse to activities (warehouse fulfilling region demand)
+
+#4x16, 16x4
+# 1 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0
+# 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0
+# 0 0 0 0 0 0 0 0 1 1 1 1 0 0 0 0 
+# 0 0 0 0 0 0 0 0 0 0 0 0 1 1 1 1
+
+# 1 0 0 0
+# 0 1 0 0
+# 0 0 1 0 
+# 0 0 0 1
+# 1 0 0 0
+# 0 1 0 0
+# 0 0 1 0 
+# 0 0 0 1
+# 1 0 0 0
+# 0 1 0 0
+# 0 0 1 0 
+# 0 0 0 1
+# 1 0 0 0
+# 0 1 0 0
+# 0 0 1 0 
+# 0 0 0 1
+
 
 
 
@@ -152,7 +207,7 @@ if __name__ == '__main__':
             ####### dynamic simulation stuff ######
             simlist = loadpickles(path = new_path, alpha=alpha)
             print('run_sim started')
-            run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower)
+            run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy)
 
     
 
