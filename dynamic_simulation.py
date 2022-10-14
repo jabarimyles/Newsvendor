@@ -163,9 +163,7 @@ class Simulation(object):
     def output_to_csv(self, sim_df):
             csv_file = open(csv_name, "w")
             writer = csv.writer(csv_file) 
-            #writer.writerow(fields)
-            #csv_file = open(csv_name, "a")
-            writer = csv.writer(csv_file) 
+
             csv_file.close()
 
     
@@ -245,7 +243,7 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
                 #sim.plot_sim_inventory()
                 
                 j+=1
-                #print(j)
+                
 
                 sim.cost_dict = copy.deepcopy(sim.cost)
                 sim.largest_lower = max(sim.cost, key=sim.cost.get)
@@ -254,7 +252,7 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
                 sim_df = pd.concat([sim_df,new_row], ignore_index=True)
 
                 #plot_sim_cost_hist(sim_df, days,j)
-                #print(sim.cost)
+                
             i+=1
             print("i:" + str(i) + '/' + str(n_params), end="")
             print("\r", end="")
@@ -352,7 +350,7 @@ def comparepickles(path,alpha=1, beta=1, novel=False):
 ###
 
 
-
+"""
 if __name__ == '__main__':
 
     begin_time = datetime.datetime.now()
@@ -365,6 +363,13 @@ if __name__ == '__main__':
     run_sim()
 
     print(datetime.datetime.now() - begin_time)
+
+
+
+
+"""
+
+
 #THIS IS USED TO RUN FROM CMD LINE
 #    parser = argparse.ArgumentParser(description='Get path to simulation information.')
 

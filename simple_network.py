@@ -66,7 +66,6 @@ def construct_AB(n, dem_mean=10, cov = {}, samples=1000, c_cost=1, p_cost=8, cv=
 
     variance = stddev**2
 
-#np.maximum(0, np.around(pos_cor_rand.multivariate_normal(scale*product_dem_rate, var, W_ecom))) n sample = 1000
 
 #ordering cost = 1, holding cost = .05*ordering cost, bl cost = 5,10
 
