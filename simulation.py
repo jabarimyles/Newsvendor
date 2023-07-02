@@ -13,7 +13,7 @@ import pickle
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
+lead_time = 20
 # ATO set Cover
 A_sc = np.array([[1, 0, 1, 0, 1, 0, 1],
                   [0, 1, 1, 0, 0, 1, 1],
@@ -27,7 +27,7 @@ c_sc = np.ones(M)
 q_sc = 0.5*np.ones(N)
 p_sc = 10*np.ones(N)
 
-W = 100
+W = 1000
 mu = 1/W*np.ones(W)
 np.random.seed(2)
 mean = 0.1739
@@ -349,18 +349,23 @@ def prod_sim(load_prod):
                 product_n = len(prod_dem_rate)
             for scale in dem_scale_prod:
                 for dist in dist_list:
+                    d_sol = np.zeros((W_prod, product_n))
                     if not load_prod:
-                        if dist == 'indep':
-                            d = np.random.binomial(scale, prod_dem_rate, size=(W_prod, product_n))
-                        if dist == 'pos_cor':
-                            var = scale * (np.identity(product_n) + 0.5 * (
-                                        np.ones([product_n, product_n]) - np.identity(product_n)))
-                            d = np.maximum(0,
-                                           np.around(np.random.multivariate_normal(scale * prod_dem_rate, var, W_prod)))
-                        if dist == 'neg_cor':
-                            cor_p = np.minimum(1, np.sum(prod_dem_rate) * np.random.dirichlet(prod_dem_rate, size=W_prod))
-                            d = np.random.binomial(scale, cor_p)
-                        prod_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_prod, 'A': A, 'B': B}
+                        for i in range(lead_time+1):
+                            if dist == 'indep':
+                                d = np.random.binomial(scale, prod_dem_rate, size=(W_prod, product_n))
+                                d_sol += d
+                            if dist == 'pos_cor':
+                                var = scale * (np.identity(product_n) + 0.5 * (
+                                            np.ones([product_n, product_n]) - np.identity(product_n)))
+                                d = np.maximum(0,
+                                            np.around(np.random.multivariate_normal(scale * prod_dem_rate, var, W_prod)))
+                                d_sol += d
+                            if dist == 'neg_cor':
+                                cor_p = np.minimum(1, np.sum(prod_dem_rate) * np.random.dirichlet(prod_dem_rate, size=W_prod))
+                                d = np.random.binomial(scale, cor_p)
+                                d_sol += d
+                        prod_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_prod, 'A': A, 'B': B, 'd_sol': d_sol}
                         [prod_opt, r_opt, x_opt, y_opt, opt_time] = op.nn_opt(prod_inst, var_type='C', return_xy=True)
                     # print("LP r:", r_opt)
                     # print("time:", opt_time)
@@ -437,16 +442,21 @@ def ecom_sim(load_ecom):
                     [A, q, B, p] = ecom_system_gen(reg_n, item_n, bundles, short_cst_item, ship_loc_cst, ship_nhb_mult, ship_fix_cst)
                 for scale in dem_scale:
                     for dist in dist_list:
+                        d_sol = np.zeros((W_ecom, product_n))
                         if not load_ecom:
-                            if dist == 'indep':
-                                d = indep_rand.binomial(scale, product_dem_rate, size=(W_ecom, product_n))
-                            if dist == 'pos_cor':
-                                var = scale*(np.identity(product_n) + 0.5*(np.ones([product_n, product_n]) - np.identity(product_n)))
-                                d = np.maximum(0, np.around(pos_cor_rand.multivariate_normal(scale*product_dem_rate, var, W_ecom)))
-                            if dist == 'neg_cor':
-                                cor_p = np.minimum(1, np.sum(product_dem_rate)*neg_cor_rand.dirichlet(product_dem_rate, size=W_ecom))
-                                d = neg_cor_rand.binomial(scale, cor_p)
-                            ecom_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_ecom, 'A': A, 'B': B}
+                            for i in range(lead_time+1):
+                                if dist == 'indep':
+                                    d = indep_rand.binomial(scale, product_dem_rate, size=(W_ecom, product_n))
+                                    d_sol += d
+                                if dist == 'pos_cor':
+                                    var = scale*(np.identity(product_n) + 0.5*(np.ones([product_n, product_n]) - np.identity(product_n)))
+                                    d = np.maximum(0, np.around(pos_cor_rand.multivariate_normal(scale*product_dem_rate, var, W_ecom)))
+                                    d_sol += d
+                                if dist == 'neg_cor':
+                                    cor_p = np.minimum(1, np.sum(product_dem_rate)*neg_cor_rand.dirichlet(product_dem_rate, size=W_ecom))
+                                    d = neg_cor_rand.binomial(scale, cor_p)
+                                    d_sol += d
+                            ecom_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_ecom, 'A': A, 'B': B, 'd_sol': d_sol}
                             [ecom_opt, r_opt, x_opt, y_opt, opt_time] = op.nn_opt(ecom_inst, var_type='C', return_xy=True)
                             ecom_lp_sol = {'r': r_opt, 'x': x_opt, 'y': y_opt, 'cost': ecom_opt, 'time': opt_time}
                             with open("instances/ecom" + str(row) + ".pkl", 'wb') as fpick:
@@ -514,18 +524,23 @@ def manuf_sim(load_manuf):
                 for scale in dem_scale_manuf:
                     # for dist in ['indep', 'pos_cor', 'neg_cor']:
                     for dist in dist_list:
+                        d_sol = np.zeros((W_manuf, product_n))
                         if not load_manuf:
-                            if dist == 'indep':
-                                d = np.random.binomial(scale, dem_rate_manuf, size=(W_manuf, product_n))
-                            if dist == 'pos_cor':
-                                var = scale * (np.identity(product_n) + 0.5 * (
-                                            np.ones([product_n, product_n]) - np.identity(product_n)))
-                                d = np.maximum(0,
-                                               np.around(np.random.multivariate_normal(scale * dem_rate_manuf, var, W_manuf)))
-                            if dist == 'neg_cor':
-                                cor_p = np.minimum(1, np.sum(dem_rate_manuf) * np.random.dirichlet(dem_rate_manuf, size=W_manuf))
-                                d = np.random.binomial(scale, cor_p)
-                            manuf_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_manuf, 'A': A, 'B': B}
+                            for i in range(lead_time+1):
+                                if dist == 'indep':
+                                    d = np.random.binomial(scale, dem_rate_manuf, size=(W_manuf, product_n))
+                                    d_sol += d
+                                if dist == 'pos_cor':
+                                    var = scale * (np.identity(product_n) + 0.5 * (
+                                                np.ones([product_n, product_n]) - np.identity(product_n)))
+                                    d = np.maximum(0,
+                                                np.around(np.random.multivariate_normal(scale * dem_rate_manuf, var, W_manuf)))
+                                    d_sol += d
+                                if dist == 'neg_cor':
+                                    cor_p = np.minimum(1, np.sum(dem_rate_manuf) * np.random.dirichlet(dem_rate_manuf, size=W_manuf))
+                                    d = np.random.binomial(scale, cor_p)
+                                    d_sol += d
+                            manuf_inst = {'c': c, 'q': q, 'p': p, 'd': d, 'mu': mu_manuf, 'A': A, 'B': B, 'd_sol': d_sol}
                             [manuf_opt, r_opt, x_opt, y_opt, opt_time] = op.nn_opt(manuf_inst, var_type='C', return_xy=True)
                         # print("LP r:", r_opt)
                         # print("time:", opt_time)
@@ -572,7 +587,10 @@ def manuf_sim(load_manuf):
         flnm = 'manuf_simulation_near_int.csv'
         output_manuf.to_csv(flnm)
 
-
+if __name__ == '__main__':
+    prod_sim(False)
+    #manuf_sim(False)
+    ecom_sim(False)
 
     # G = nx.algorithms.bipartite.matrix.from_biadjacency_matrix(sp.csr_matrix(A))
     # top = nx.bipartite.sets(G)[0]
