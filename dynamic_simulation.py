@@ -69,6 +69,7 @@ class Simulation(object):
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
         self.z = np.zeros(len(self.c)) #processing activities
+        self.z_hist = 
         self.h = self.c * alpha
         self.sim_cost = 0
         self.ordering_cost = 0
@@ -76,10 +77,24 @@ class Simulation(object):
         self.holding_cost = 0
         self.fulfillment_cost = 0
         self.sim_cost_hist = []
+        self.X_tilde
+        self.B_hat
+        self.B_bar
+        self.B_bar_hist
+        self.B_tilde
+        self.B_tilde_hist
+        self.D_hat
+        self.D_hat_hist
+        
+        
+
+        if self.lead_time > 0:
+            self.I = copy.deepcopy(self.r)
+            self.u_k 
 
         self.demand = np.zeros(dictionary['p'].shape[0])
         self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
-        self.Xi = np.zeros(len(self.q)) 
+        self.x_k = np.zeros(len(self.q)) 
         self.num_fill = np.zeros(len(self.q)) 
 
     def get_min_actv(self):
@@ -104,23 +119,23 @@ class Simulation(object):
 
     def smart_fulfillment(self):   
         num_fill =  np.matmul(self.min_actv, self.BL)
-        self.Xi += num_fill  #Update fulfilled
-        self.sim_cost += np.sum(self.q * self.Xi) #fulfillment cost
-        self.fulfillment_cost += np.sum(self.q * self.Xi)
+        self.x_k += num_fill  #Update fulfilled
+        self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.x_k)
 
     def simple_smart_fulfillment(self):   
-        self.Xi[0] = min(self.I[0]+self.z[0], self.BL[0]+self.demand[0])
-        self.Xi[1] = min(max(self.I[0]+self.z[0]-self.BL[0]-self.demand[0],0), max(self.BL[1]+self.demand[1]-self.I[1]-self.z[1],0))
-        self.Xi[2] = min(self.I[1]+self.z[1], self.BL[1]+self.demand[1])
-        #self.Xi += self.num_fill  #Update fulfilled
-        self.sim_cost += np.sum(self.q * self.Xi) #fulfillment cost
-        self.fulfillment_cost += np.sum(self.q * self.Xi)
+        self.x_k[0] = min(self.I[0]+self.z[0], self.BL[0]+self.demand[0])
+        self.x_k[1] = min(max(self.I[0]+self.z[0]-self.BL[0]-self.demand[0],0), max(self.BL[1]+self.demand[1]-self.I[1]-self.z[1],0))
+        self.x_k[2] = min(self.I[1]+self.z[1], self.BL[1]+self.demand[1])
+        #self.x_k += self.num_fill  #Update fulfilled
+        self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.x_k)
 
     def demand_draw(self):
         index = seed_rand.choice(self.mu.shape[0], p=self.mu)
         self.demand_index = index
         self.demand = self.d[index]
-        self.Xi = copy.deepcopy(self.x[index])
+        self.x_k = copy.deepcopy(self.x[index])
         
     
     def get_cheapest(self):
@@ -129,7 +144,7 @@ class Simulation(object):
 
 
     def update_inventory(self):
-        self.I += self.z - np.matmul(self.A, self.Xi)
+        self.I += self.z - np.matmul(self.A, self.x_k)
         #if np.any(self.I < 0):
         #    pdb.set_trace()
         self.sim_cost += np.matmul(self.I, self.h)
@@ -138,11 +153,30 @@ class Simulation(object):
 
 
     def update_backlog(self):
-        self.BL += self.demand - np.matmul(self.Xi, self.B)
+        self.BL += self.demand - np.matmul(self.x_k, self.B)
         self.sim_cost += np.matmul(self.BL, self.p) #np.any(self.BL < 0)
         self.backlog_cost += np.matmul(self.BL, self.p) #backlog cost
         self.BL_hist = np.vstack([self.BL_hist, self.BL])
-        
+    
+
+    def update_D_hat(self):
+        a=1
+    
+    def update_B_tilde(self):
+        a=1
+    
+    def update_X_tilde(self):
+        a=1
+    
+    def update_B_bar(self):
+        self.B_bar += self.D_hat + self.B_tilde - self.x_k
+
+    def deterministic_order(self):
+        self.z = self.r - self.I - np.sum(self.z_hist)
+
+    def deterministic_fulfillment(self):
+        self.x_k = self.X_tilde + self.B_tilde_hist[:,self.lead_time+1]
+
     def plot_sim_backlog(self):
         #fig = plt.figure()
         #fig.add_subplot(111)
@@ -169,7 +203,7 @@ class Simulation(object):
     
     
 def summarize_sims(df):
-    df = df.drop(['sim number', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'], axis=1)
+    df = df.drop(['sim number', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'], ax_ks=1)
     df['simulation cost'] = pd.to_numeric(df['simulation cost'])
     df['cost'] = pd.to_numeric(df['cost'])
     df['upper cost'] = pd.to_numeric(df['upper cost'])
@@ -185,7 +219,7 @@ def summarize_sims(df):
     df['lower cost ratio'] = df['sim_cost_per_day_mean']/df['cost_mean']
     df['upper cost ratio'] = df['sim_cost_per_day_mean']/df['upper cost_mean']
 
-    df_out = df.drop(['upper cost_sem', 'upper cost_mean', 'upper cost ratio'], axis=1)
+    df_out = df.drop(['upper cost_sem', 'upper cost_mean', 'upper cost ratio'], ax_ks=1)
 
     return df_out
 
@@ -266,7 +300,74 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
     except:
         print("Simulation failed")
     
+
+
+def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
+    '''run simulation'''
+    #global n_sims
+    #global n_paths
+    n_params = len(sim_list)
+    column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim_list[0].cost.keys())
+    sim_df = pd.DataFrame(columns = column_names)
+
+    i=0
+
+    try:
+        while i < n_params:
+            
+            j=0
+            while j < n_sims:    
+                sim = copy.deepcopy(sim_list[i])
+                column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim.cost.keys())
+                #del sim_list[i]
+                sim.get_min_actv()
+                k=0       
+                while k < days:
+                        if optimal_policy:
+                            sim.simple_smart_order()
+                        else:
+                            sim.smart_order()
+
+                        sim.demand_draw()
+                        
+                        if optimal_policy:
+                            sim.simple_smart_fulfillment()
+                        else:
+                            sim.smart_fulfillment()
+
+                        sim.update_backlog()
+                        sim.update_inventory()
+
+                        k+=1
+                        
+                        
+                    
+                sim.plot_sim_backlog()
+                sim.plot_sim_inventory()
+                
+                j+=1
+                
+
+                sim.cost_dict = copy.deepcopy(sim.cost)
+                sim.largest_lower = max(sim.cost, key=sim.cost.get)
+                sim.cost = max(sim.cost.values())
+                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.largest_lower, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]+ list(sim.cost_dict.values())]), columns=sim_df.columns)
+                sim_df = pd.concat([sim_df,new_row], ignore_index=True)
+
+                #plot_sim_cost_hist(sim_df, days,j)
+                
+            i+=1
+            print("i:" + str(i) + '/' + str(n_params), end="")
+            print("\r", end="")
+        sum_sim_df = summarize_sims(sim_df)
+        sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
+
+        print("Simulation passed")
     
+
+    except:
+        print("Simulation failed")
 
 
 
