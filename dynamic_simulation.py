@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import sem
 import cProfile
 import time
+from scipy.stats import variation 
 #from optimals import sec_stg, ato_opt, nn_opt
 pd.options.mode.chained_assignment = None  # default='warn'
 
@@ -60,7 +61,8 @@ csv_name = 'newsvendoroutput.csv'
 class Simulation(object):
 
     def __init__(self, dictionary,alpha):
-
+        
+        self.theta=1
         # Set attributes from dictionary
         for key in dictionary:
             setattr(self, key, dictionary[key])
@@ -69,7 +71,6 @@ class Simulation(object):
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
         self.z = np.zeros(len(self.c)) #processing activities
-        self.z_hist = 
         self.h = self.c * alpha
         self.sim_cost = 0
         self.ordering_cost = 0
@@ -77,23 +78,28 @@ class Simulation(object):
         self.holding_cost = 0
         self.fulfillment_cost = 0
         self.sim_cost_hist = []
-        self.X_tilde
-        self.B_hat
-        self.B_bar
-        self.B_bar_hist
-        self.B_tilde
-        self.B_tilde_hist
-        self.D_hat
-        self.D_hat_hist
-        
-        
-
+        self.X_tilde = np.zeros(len(self.q))
+        self.B_hat = np.zeros(len(self.q))
+        self.B_bar = np.zeros(len(self.q))
+        self.B_tilde = np.zeros(len(self.q))
+        self.D_hat = np.zeros(len(self.q))
         if self.lead_time > 0:
             self.I = copy.deepcopy(self.r)
-            self.u_k 
+            self.u_k = (1/(self.lead_time+1))(self.q + np.matmul(self.A,(self.c - (self.lead_time-1)*self.h)))
+            self.z_hist = np.zeros((len(self.c), self.lead_time+1))
+            self.B_bar_hist = np.zeros((len(self.q), self.lead_time))
+            self.B_tilde_hist = np.zeros((len(self.q), self.lead_time))
+            self.D_hat_hist = np.zeros((len(self.q), self.lead_time))
+            self.L_k = (self.theta+1) * self.x.mean(axis=0)
+            self.r = (self.theta+1) * (self.r**self.lead_time)
+            mu_j = self.d.mean(axis=0)
+            numer = np.matmul((self.p + self.h_bar), (mu_j * variation(self.d, axis=0)**2))
+            denom = np.matmul(np.matmul(mu_j,self.B), (self.min_actv * self.q))
+            self.max_theta = np.sqrt(numer/denom)
 
         self.demand = np.zeros(dictionary['p'].shape[0])
         self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
+        self.h_bar = np.zeros(self.h.shape[0])
         self.x_k = np.zeros(len(self.q)) 
         self.num_fill = np.zeros(len(self.q)) 
 
@@ -105,6 +111,15 @@ class Simulation(object):
                 actv_cost = np.matmul(self.c ,self.A[:,j])
                 cost_dict[j] = self.q[j] + actv_cost
             self.min_actv[min(cost_dict,key=cost_dict.get),i] += 1 #lowest activity for given product
+    
+    def get_max_hold(self):
+        for i in range(self.p.shape[0]):
+            pos_actvs = np.where(self.B[:,i] == 1)[0] #activities that can fulfill each product
+            cost_dict = {}
+            for j in pos_actvs:
+                actv_cost = np.matmul(self.h ,self.A[:,j])
+                cost_dict[j] = self.h[j] + actv_cost
+            self.h_bar[max(cost_dict,key=cost_dict.get),i] += 1 #lowest activity for given product
 
     def smart_order(self):
         self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
@@ -123,6 +138,7 @@ class Simulation(object):
         self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.x_k)
 
+
     def simple_smart_fulfillment(self):   
         self.x_k[0] = min(self.I[0]+self.z[0], self.BL[0]+self.demand[0])
         self.x_k[1] = min(max(self.I[0]+self.z[0]-self.BL[0]-self.demand[0],0), max(self.BL[1]+self.demand[1]-self.I[1]-self.z[1],0))
@@ -131,20 +147,24 @@ class Simulation(object):
         self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.x_k)
 
+
     def demand_draw(self):
         index = seed_rand.choice(self.mu.shape[0], p=self.mu)
         self.demand_index = index
         self.demand = self.d[index]
         self.x_k = copy.deepcopy(self.x[index])
         
-    
+
     def get_cheapest(self):
         self.A = self.A[np.array(np.argsort(self.p))]
 
 
 
     def update_inventory(self):
-        self.I += self.z - np.matmul(self.A, self.x_k)
+        if self.lead_time == 0:
+            self.I += self.z - np.matmul(self.A, self.x_k)
+        else:
+            self.I + self.z_hist[:,self.lead_time] - np.matmul(self.B,self.x_k)
         #if np.any(self.I < 0):
         #    pdb.set_trace()
         self.sim_cost += np.matmul(self.I, self.h)
@@ -160,13 +180,13 @@ class Simulation(object):
     
 
     def update_D_hat(self):
-        a=1
+        self.D_hat = np.matmul(self.phi, np.matmul(self.demand, self.B))
     
     def update_B_tilde(self):
-        a=1
+        self.B_tilde = np.matmul(self.min_actv, self.psi * self.demand)
     
     def update_X_tilde(self):
-        a=1
+        self.X_tilde = np.minimum(self.D_hat + self.B_hat, )
     
     def update_B_bar(self):
         self.B_bar += self.D_hat + self.B_tilde - self.x_k
@@ -252,8 +272,9 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
                 column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim.cost.keys())
                 #del sim_list[i]
                 sim.get_min_actv()
-                k=0       
-                while k < days:
+                sim.get_max_hold()
+                sim.k=0       
+                while sim.k < days:
                         if optimal_policy:
                             sim.simple_smart_order()
                         else:
@@ -269,7 +290,7 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
                         sim.update_backlog()
                         sim.update_inventory()
 
-                        k+=1
+                        sim.k+=1
                         
                         
                     

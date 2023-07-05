@@ -29,6 +29,7 @@ zero_order = True
 alphas = [.01]
 betas = [.5, .8, .9, 1] 
 deltas = [1, .99, .97, .95, .9, .85, .8]
+thetas = [.25, .50, .75]
 
 # Specify output path, if blank it goes to cwd
 path = ''
@@ -145,6 +146,10 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
             """
 
             # Create cost vars for solving SP
+            # ordering cost, activity and shortage cost
+            ordering_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['c'], np.matmul(loadedpkl['instance']['A'],loadedpkl['instance']['x']))
+            activity_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['q'], loadedpkl['instance']['x']).mean(axis=0)
+            shortage_cost = np.matmul(loadedpkl['instance']['p'], loadedpkl['instance']['y']).mean(axis=0)
             h = (alpha * loadedpkl['instance']['c']) #holding cost for SP
             u_k = ((1-alpha*(lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1) #long-run activity cost
             instance = {'c': h, 'q': u_k, 'p': loadedpkl['instance']['p'], 'd': d_sol, 'mu': mu, 'A': loadedpkl['instance']['A'], 'B':loadedpkl['instance']['B'], 'lead_time':lead_time}
