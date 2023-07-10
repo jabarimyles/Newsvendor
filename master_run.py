@@ -30,7 +30,7 @@ alphas = [.01]
 betas = [.5, .8, .9, 1] 
 deltas = [1, .99, .97, .95, .9, .85, .8]
 thetas = [.25, .50, .75]
-
+lead_times = [3]
 # Specify output path, if blank it goes to cwd
 path = ''
 cwd = os.getcwd()
@@ -70,6 +70,8 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
         new_path =  cwd + '/pos_leads/simple_network/instances'+str(int(alpha*100))
     elif lead_time > 0 and not simple_network:
         new_path = cwd + '/pos_leads/real_network/lead_out'+str(lead_time)
+    if not os.path.isdir(new_path):
+        os.makedirs(new_path)
 
     if file.endswith(".pkl"):
                 
@@ -147,11 +149,12 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
 
             # Create cost vars for solving SP
             # ordering cost, activity and shortage cost
-            ordering_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['c'], np.matmul(loadedpkl['instance']['A'],loadedpkl['instance']['x']))
-            activity_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['q'], loadedpkl['instance']['x']).mean(axis=0)
-            shortage_cost = np.matmul(loadedpkl['instance']['p'], loadedpkl['instance']['y']).mean(axis=0)
+            #ordering_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['c'], np.matmul(loadedpkl['instance']['A'],loadedpkl['LP_solution']['x'].T))
+            #activity_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['q'], loadedpkl['LP_solution']['x']).mean(axis=0)
+            #shortage_cost = np.matmul(loadedpkl['instance']['p'], loadedpkl['LP_solution']['y']).mean(axis=0)
             h = (alpha * loadedpkl['instance']['c']) #holding cost for SP
-            u_k = ((1-alpha*(lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1) #long-run activity cost
+            #u_k = ((1-alpha*(lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1) #long-run activity cost
+            u_k = (1/lead_time+1) * (np.matmul(loadedpkl['instance']['A'], (loadedpkl['instance']['c'] - ((lead_time+1) * alpha))) + loadedpkl['instance']['q'])
             instance = {'c': h, 'q': u_k, 'p': loadedpkl['instance']['p'], 'd': d_sol, 'mu': mu, 'A': loadedpkl['instance']['A'], 'B':loadedpkl['instance']['B'], 'lead_time':lead_time}
             [cost, r, x, y, time] = nn_opt(instance, var_type='C', return_xy=True)
 
@@ -264,31 +267,40 @@ if __name__ == '__main__':
 #then run nn_opt on instance with c1, q1, p1
 #then run simulation with: h = alpha*c0
 #c = c0, q=q0, p=p0
-    orig_path = cwd + '/instances'
-    for root, dir, files, in os.walk(orig_path):
-        for alpha in alphas:
-            for file in files:
-                if file.endswith(".pkl"):
-                    print(file)
-                    begin_time = datetime.datetime.now()
-                    if path == '':
-                        new_path = cwd + '/instances'+str(int(alpha*100))
-                    else: 
-                        new_path = path + '/instances'+str(int(alpha*100))
     
-                    
-                    if not os.path.isdir(new_path):
-                        os.makedirs(new_path)
-                    if not just_sim:
-                        modpickles(path=path,alpha=alpha, novel=novel_lower)
-                    
-                    print(datetime.datetime.now() - begin_time)
 
-            print('loadpickles started')
-            ####### dynamic simulation stuff ######
-            simlist = loadpickles(path = new_path, alpha=alpha)
-            print('run_sim started')
-            run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy)
+    for alpha in alphas:
+        for lead_time in lead_times:
+            if lead_time == 0:
+                orig_path = cwd + '/instances'
+            elif lead_time > 0 and not simple_network:
+                orig_path = cwd + '/pos_leads/real_network/lead' + str(int(lead_time))
+            elif lead_time > 0 and simple_network:
+                orig_path = cwd + '/pos_leads/simple_network/instances' + str(int(alpha))
+            for root, dir, files, in os.walk(orig_path):
+                for file in files:
+                    if file.endswith(".pkl"):
+                        print(file)
+                        begin_time = datetime.datetime.now()
+                        if lead_time == 0:
+                            new_path = cwd + '/instances'+str(int(alpha*100))
+                        elif lead_time > 0 and simple_network: 
+                            new_path =  cwd + '/pos_leads/simple_network/instances'+str(int(alpha*100))
+                        elif lead_time > 0 and not simple_network:
+                            new_path = cwd + '/pos_leads/real_network/lead_out'+str(lead_time)
+
+                        if not os.path.isdir(new_path):
+                            os.makedirs(new_path)
+                        if not just_sim:
+                            modpickles(path=path,alpha=alpha, novel=novel_lower, lead_time=lead_time)
+                        
+                        print(datetime.datetime.now() - begin_time)
+
+                print('loadpickles started')
+                ####### dynamic simulation stuff ######
+                simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time)
+                print('run_sim started')
+                run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
 
     
 

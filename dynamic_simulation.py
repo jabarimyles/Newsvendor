@@ -83,25 +83,24 @@ class Simulation(object):
         self.B_bar = np.zeros(len(self.q))
         self.B_tilde = np.zeros(len(self.q))
         self.D_hat = np.zeros(len(self.q))
+        self.demand = np.zeros(dictionary['p'].shape[0])
+        self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
+        self.h_bar = np.zeros(self.q.shape[0])
+        self.x_k = np.zeros(len(self.q)) 
+        self.num_fill = np.zeros(len(self.q)) 
+
         if self.lead_time > 0:
             self.I = copy.deepcopy(self.r)
-            self.u_k = (1/(self.lead_time+1))(self.q + np.matmul(self.A,(self.c - (self.lead_time-1)*self.h)))
+            self.u_k = (1/(self.lead_time+1))*(self.q + np.matmul(self.A.T,(self.c - (self.lead_time+1)*self.h)))
             self.z_hist = np.zeros((len(self.c), self.lead_time+1))
             self.B_bar_hist = np.zeros((len(self.q), self.lead_time))
             self.B_tilde_hist = np.zeros((len(self.q), self.lead_time))
             self.D_hat_hist = np.zeros((len(self.q), self.lead_time))
             self.L_k = (self.theta+1) * self.x.mean(axis=0)
             self.r = (self.theta+1) * (self.r**self.lead_time)
-            mu_j = self.d.mean(axis=0)
-            numer = np.matmul((self.p + self.h_bar), (mu_j * variation(self.d, axis=0)**2))
-            denom = np.matmul(np.matmul(mu_j,self.B), (self.min_actv * self.q))
-            self.max_theta = np.sqrt(numer/denom)
+            
 
-        self.demand = np.zeros(dictionary['p'].shape[0])
-        self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
-        self.h_bar = np.zeros(self.h.shape[0])
-        self.x_k = np.zeros(len(self.q)) 
-        self.num_fill = np.zeros(len(self.q)) 
+        
 
     def get_min_actv(self):
         for i in range(self.p.shape[0]):
@@ -164,7 +163,7 @@ class Simulation(object):
         if self.lead_time == 0:
             self.I += self.z - np.matmul(self.A, self.x_k)
         else:
-            self.I + self.z_hist[:,self.lead_time] - np.matmul(self.B,self.x_k)
+            self.I += self.z_hist[:,self.lead_time] - np.matmul(self.A,self.x_k)
         #if np.any(self.I < 0):
         #    pdb.set_trace()
         self.sim_cost += np.matmul(self.I, self.h)
@@ -190,12 +189,28 @@ class Simulation(object):
     
     def update_B_bar(self):
         self.B_bar += self.D_hat + self.B_tilde - self.x_k
+    
+    def update_B_hat(self):
+        self.B_hat += self.D_hat + self.X_tilde
+    
+    def update_determ_vars(self):
+        self.update_D_hat()
+        self.update_B_tilde()
+        self.update_X_tilde()
+        self.update_B_bar() # after dhat, b_tilde
+        self.update_B_hat #after dhat and x_tilde
+
 
     def deterministic_order(self):
-        self.z = self.r - self.I - np.sum(self.z_hist)
+        self.z = self.r - self.I - np.sum(self.z_hist) + np.matmul(self.A, self.B_bar_hist[:,1])
+        self.z[self.z < 0] = 0
+        self.sim_cost += np.matmul(self.z, self.c) #ordering cost
+        self.ordering_cost += np.matmul(self.z, self.c)
 
     def deterministic_fulfillment(self):
         self.x_k = self.X_tilde + self.B_tilde_hist[:,self.lead_time+1]
+        self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.x_k)
 
     def plot_sim_backlog(self):
         #fig = plt.figure()
@@ -253,12 +268,12 @@ def plot_sim_cost_hist(sim_df, days,j):
     #plt.show(block=False)
  
 
-def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
+def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
     '''run simulation'''
     #global n_sims
     #global n_paths
     n_params = len(sim_list)
-    column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim_list[0].cost.keys())
+    column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] #+ list(sim_list[0].cost.keys())
     sim_df = pd.DataFrame(columns = column_names)
 
     i=0
@@ -269,44 +284,56 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False):
             j=0
             while j < n_sims:    
                 sim = copy.deepcopy(sim_list[i])
-                column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim.cost.keys())
+                column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] #+ list(sim.cost.keys())
                 #del sim_list[i]
                 sim.get_min_actv()
                 sim.get_max_hold()
-                sim.k=0       
-                while sim.k < days:
-                        if optimal_policy:
-                            sim.simple_smart_order()
-                        else:
-                            sim.smart_order()
+                sim.k=0
+                mu_j = sim.d.mean(axis=0)
+                numer = np.matmul((sim.p + sim.h_bar), (mu_j * variation(sim.d, axis=0)**2))
+                denom = np.matmul(np.matmul(mu_j,sim.B.T), (sim.min_actv.T * sim.q).T)
+                max_theta = np.sqrt(numer/denom)
+                chosen_theta = 0
+                while chosen_theta <= max_theta: 
+                    while sim.k < days:
+                        if lead_time == 0:
+                            # Ordering
+                            if optimal_policy:
+                                sim.simple_smart_order()
+                            else:
+                                sim.smart_order()
+                            # Demand realized
+                            sim.demand_draw()
+                            # Fulfillment
+                            if optimal_policy:
+                                sim.simple_smart_fulfillment()
+                            else:
+                                sim.smart_fulfillment()
+                        elif lead_time > 0:
+                            a=1
 
-                        sim.demand_draw()
-                        
-                        if optimal_policy:
-                            sim.simple_smart_fulfillment()
-                        else:
-                            sim.smart_fulfillment()
-
+                        # Update state variables
                         sim.update_backlog()
                         sim.update_inventory()
-
+                        # End of day
                         sim.k+=1
+                            
+                            
                         
-                        
+                    #sim.plot_sim_backlog()
+                    #sim.plot_sim_inventory()
                     
-                #sim.plot_sim_backlog()
-                #sim.plot_sim_inventory()
-                
-                j+=1
-                
+                    j+=1
+                    
 
-                sim.cost_dict = copy.deepcopy(sim.cost)
-                sim.largest_lower = max(sim.cost, key=sim.cost.get)
-                sim.cost = max(sim.cost.values())
-                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.largest_lower, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]+ list(sim.cost_dict.values())]), columns=sim_df.columns)
-                sim_df = pd.concat([sim_df,new_row], ignore_index=True)
+                    sim.cost_dict = copy.deepcopy(sim.cost)
+                    sim.largest_lower = max(sim.cost, key=sim.cost.get)
+                    sim.cost = max(sim.cost.values())
+                    new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.largest_lower, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]+ list(sim.cost_dict.values())]), columns=sim_df.columns)
+                    sim_df = pd.concat([sim_df,new_row], ignore_index=True)
 
-                #plot_sim_cost_hist(sim_df, days,j)
+                    #plot_sim_cost_hist(sim_df, days,j)
+                    chosen_theta += max_theta/5
                 
             i+=1
             print("i:" + str(i) + '/' + str(n_params), end="")
@@ -393,10 +420,14 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1
 
 
 
-def loadpickles(path,alpha=1):
+def loadpickles(path,alpha=1, simple_network=False, lead_time=0):
     simlist = []
-    if path == '':
+    if lead_time == 0:
         file_path = cwd + '/instances'+str(int(alpha*100))
+    elif lead_time > 0 and not simple_network:
+        file_path = cwd + '/pos_leads/real_network/lead_out'+str(int(lead_time))
+    elif lead_time > 0 and simple_network:
+        file_path = cwd + '/pos_leads/simple_network/instances'+str(int(alpha*100))
     else: 
         file_path = path
 
