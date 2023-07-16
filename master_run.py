@@ -153,8 +153,8 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
             #activity_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['q'], loadedpkl['LP_solution']['x']).mean(axis=0)
             #shortage_cost = np.matmul(loadedpkl['instance']['p'], loadedpkl['LP_solution']['y']).mean(axis=0)
             h = (alpha * loadedpkl['instance']['c']) #holding cost for SP
-            #u_k = ((1-alpha*(lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1) #long-run activity cost
-            u_k = (1/lead_time+1) * (np.matmul(loadedpkl['instance']['A'], (loadedpkl['instance']['c'] - ((lead_time+1) * alpha))) + loadedpkl['instance']['q'])
+            u_k = ((1-alpha*(lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1) #long-run activity cost
+            #u_k = (1/lead_time+1) * (np.matmul(loadedpkl['instance']['A'].T, (loadedpkl['instance']['c'] - ((lead_time+1) * alpha))) + loadedpkl['instance']['q'])
             instance = {'c': h, 'q': u_k, 'p': loadedpkl['instance']['p'], 'd': d_sol, 'mu': mu, 'A': loadedpkl['instance']['A'], 'B':loadedpkl['instance']['B'], 'lead_time':lead_time}
             [cost, r, x, y, time] = nn_opt(instance, var_type='C', return_xy=True)
 
