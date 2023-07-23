@@ -96,6 +96,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
             #original lower bound for alpha > 1
             if alpha > 1 or zero_order:
                 if zero_order:
+
                     newpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
                     loadedpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
                     q = (loadedpkl['instance']['B'].T * loadedpkl['instance']['q']).T
@@ -103,6 +104,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
                     new_q[new_q<0] = 0
                     newpkl['instance']['q'] = new_q.sum(axis=1)
                     loadedpkl['instance']['q'] = new_q.sum(axis=1)
+
                 for d in deltas:
                     [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
                     lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
@@ -153,8 +155,11 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
             #activity_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['q'], loadedpkl['LP_solution']['x']).mean(axis=0)
             #shortage_cost = np.matmul(loadedpkl['instance']['p'], loadedpkl['LP_solution']['y']).mean(axis=0)
             h = (alpha * loadedpkl['instance']['c']) #holding cost for SP
+
             u_k = ((1-alpha*(lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1) #long-run activity cost
-            #u_k = (1/lead_time+1) * (np.matmul(loadedpkl['instance']['A'].T, (loadedpkl['instance']['c'] - ((lead_time+1) * alpha))) + loadedpkl['instance']['q'])
+
+            #u_k = (1/(lead_time+1))*(loadedpkl['instance']['q'] + np.matmul(loadedpkl['instance']['A'].T, (loadedpkl['instance']['c'] - ((lead_time+1)*h))))
+
             instance = {'c': h, 'q': u_k, 'p': loadedpkl['instance']['p'], 'd': d_sol, 'mu': mu, 'A': loadedpkl['instance']['A'], 'B':loadedpkl['instance']['B'], 'lead_time':lead_time}
             [cost, r, x, y, time] = nn_opt(instance, var_type='C', return_xy=True)
 
@@ -188,7 +193,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
             # Calculate phi and psi proportions
             phi = x_bar/exp_d_jk
             psi = y_bar/exp_d
-
+            # np.matmul(self.phi.T, self.B) + self.psi
             # Add phi, psi and lead time to the pickle file
             pos_leads = {'phi':phi, 'psi':psi, 'lead_time':lead_time}
             LP_solution = {'cost':cost, 'r':r, 'x':x, 'y':y, 'time':time} 
