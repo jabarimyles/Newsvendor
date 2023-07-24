@@ -305,7 +305,9 @@ if __name__ == '__main__':
                 ####### dynamic simulation stuff ######
                 simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time)
                 print('run_sim started')
-                run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
-
+                if lead_time > 0:
+                    run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
+                elif lead_time == 0:
+                    run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
     
 

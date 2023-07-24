@@ -20,10 +20,10 @@ seed_rand = np.random.RandomState(0)
 
 cwd = os.getcwd()
 
-n_sims = 1
+n_sims = 20
 days = 100
 
-burn_in = 10
+burn_in = 20
 
 days_mins_burn = days - burn_in
 
@@ -64,7 +64,6 @@ csv_name = 'newsvendoroutput.csv'
 class Simulation(object):
 
     def __init__(self, dictionary,alpha):
-        self.theta=0
         # Set attributes from dictionary
         for key in dictionary:
             setattr(self, key, dictionary[key])
@@ -94,6 +93,7 @@ class Simulation(object):
         if self.lead_time > 0:
             #self.u_k = (1/(self.lead_time+1))*(self.q + np.matmul(self.A.T,(self.c - (self.lead_time+1)*self.h)))
             #((1-alpha*(self.lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1)
+            self.theta = 0
             self.z_hist = np.zeros((len(self.c), self.lead_time+1))
             self.B_bar_hist = np.zeros((len(self.q), self.lead_time))
             self.B_tilde_hist = np.zeros((len(self.q), self.lead_time+2))
@@ -218,7 +218,7 @@ class Simulation(object):
 
 
     def deterministic_order(self):
-        self.z = self.r - self.I - np.sum(self.z_hist[:,0:self.lead_time], axis=1) + np.matmul(self.A, self.B_bar_hist[:,0])
+        self.z = self.r - self.I - np.sum(self.z_hist[:,0:self.lead_time], axis=1) + np.matmul(self.A, self.B_bar)
         self.z[self.z < 0] = 0
         self.z_hist = np.roll(self.z_hist, 1, axis=1)
         self.z_hist[:,0] = self.z
@@ -234,16 +234,15 @@ class Simulation(object):
             self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
 
     def check_equalities(self):
-        if (np.round(self.I,2) - np.round(self.r - np.matmul(self.A, np.sum(self.D_hat_hist[:,0:self.lead_time+1], axis=1) - self.B_hat),2) > 0.3).any():
+        if (np.round(self.I,2) != np.round(self.r - np.matmul(self.A, np.sum(self.D_hat_hist[:,0:self.lead_time+1], axis=1) - self.B_hat),2)).any():
             print('Equality 1 doesnt hold')
         if (np.round(self.z,2) != np.round(np.matmul(self.A, (self.D_hat_hist[:,1] + self.B_tilde_hist[:,1])),2)).any():
             print('Equality 2 doesnt hold')
         if (np.round(self.B_bar,2) != np.round(self.B_hat + np.sum(self.B_tilde_hist[:,0:self.lead_time+1], axis=1),2)).any():
             print('Equality 3 doesnt hold!')
-        if (np.round(self.B_bar,2) != np.round(self.B_hat + np.sum(self.B_tilde_hist[:,0:self.lead_time+1], axis=1),2)).any():
-            print('B hat equality doesnt hold')
         if (np.round(self.demand,2) != np.round(np.matmul(self.B.T, (self.D_hat + self.B_tilde)))).all():
             print("Demand equality doesnt hold")
+
         
 
     def plot_sim_backlog(self):
@@ -332,9 +331,12 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
             max_theta = 3
             max_theta_cols = ['file name', 'simulation cost_mean', 'simulation cost_sem', 'cost_mean', 'cost_sem', 'sim_cost_per_day_mean', 'sim_cost_per_day_sem', 'lower cost ratio']
             thetas_dict = {}
-            chosen_theta = 0
+            chosen_theta = max_theta/10
             max_theta_df = pd.DataFrame(columns = column_names)
             ratios_lst = []
+            sim.L_k = (chosen_theta+1) * sim.x.mean(axis=0)
+            sim.r = (chosen_theta+1) * (sim.r)
+            sim.I = copy.deepcopy(sim.r)
             while chosen_theta <= max_theta: 
                 j=0
                 column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] #+ list(sim_list[0].cost.keys())
@@ -343,12 +345,15 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
                     
                     sim = copy.deepcopy(sim_list[i])
                     sim.get_min_actv()
+                    sim.L_k = (chosen_theta+1) * sim.x.mean(axis=0)
+                    sim.r = (chosen_theta+1) * (sim.r)
+                    sim.I = copy.deepcopy(sim.r)
                     #sim.get_max_hold()
                     #mu_j = sim.d.mean(axis=0)
                     #numer = np.matmul((sim.p + sim.h_bar), (mu_j * variation(sim.d, axis=0)**2))
                     #denom = np.matmul(mu_j, np.matmul(sim.min_actv.T, sim.q))
                     #max_theta = np.sqrt(numer/denom) 
-                    max_theta = 7
+                    max_theta = 3
                     column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] 
                     # if novel_lower == True   
                     #column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] #+ list(sim.cost.keys())
@@ -379,7 +384,10 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
                             sim.deterministic_fulfillment()
                             sim.update_B_bar() # after dhat, b_tilde
                             sim.update_B_hat() #after dhat and x_tilde
-                            
+                        
+                        # ordering is done at beginning of period
+                        #t is at the end of the period for I and BL
+                        #fulfillment is decided after demand is drawn
 
 
                         # Update state variables
@@ -391,8 +399,8 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
                             
                             
                         
-                    sim.plot_sim_backlog()
-                    sim.plot_sim_inventory()
+                    #sim.plot_sim_backlog()
+                    #sim.plot_sim_inventory()
                     
                     j+=1
                     sim.cost_dict = copy.deepcopy(sim.cost)
