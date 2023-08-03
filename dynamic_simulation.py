@@ -23,7 +23,7 @@ cwd = os.getcwd()
 n_sims = 20
 days = 100
 
-burn_in = 20
+burn_in = 0
 
 days_mins_burn = days - burn_in
 
@@ -72,7 +72,8 @@ class Simulation(object):
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
         self.z = np.zeros(len(self.c)) #processing activities
-        self.h = self.c * alpha
+        if not self.zero_order:
+            self.h = self.c * alpha
         self.sim_cost = 0
         self.ordering_cost = 0
         self.backlog_cost = 0
@@ -90,17 +91,21 @@ class Simulation(object):
         self.x_k = np.zeros(len(self.q)) 
         self.num_fill = np.zeros(len(self.q)) 
 
-        if self.lead_time > 0:
+        if hasattr(self, 'lead_time'):
             #self.u_k = (1/(self.lead_time+1))*(self.q + np.matmul(self.A.T,(self.c - (self.lead_time+1)*self.h)))
             #((1-alpha*(self.lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1)
-            self.theta = 0
-            self.z_hist = np.zeros((len(self.c), self.lead_time+1))
-            self.B_bar_hist = np.zeros((len(self.q), self.lead_time))
-            self.B_tilde_hist = np.zeros((len(self.q), self.lead_time+2))
-            self.D_hat_hist = np.zeros((len(self.q), self.lead_time+1))
-            self.L_k = (self.theta+1) * self.x.mean(axis=0)
-            self.r = (self.theta+1) * (self.r)
-            self.I = copy.deepcopy(self.r)
+            if self.lead_time > 0:
+                self.theta = 0
+                self.z_hist = np.zeros((len(self.c), self.lead_time+1))
+                self.B_bar_hist = np.zeros((len(self.q), self.lead_time))
+                self.B_tilde_hist = np.zeros((len(self.q), self.lead_time+2))
+                self.D_hat_hist = np.zeros((len(self.q), self.lead_time+1))
+                self.L_k = (self.theta+1) * self.x.mean(axis=0)
+                self.r = (self.theta+1) * (self.r)
+                self.I = copy.deepcopy(self.r)
+        else:
+            self.lead_time = 0
+            self.k = 0
             
 
         
@@ -295,7 +300,7 @@ def summarize_sims(df, lead_time):
     if lead_time == 0:
         df['upper cost ratio'] = df['sim_cost_per_day_mean']/df['upper cost_mean']
     if lead_time == 0:
-        df_out = df.drop(['upper cost_sem', 'upper cost_mean', 'upper cost ratio'], ax_ks=1)
+        df_out = df.drop(['upper cost_sem', 'upper cost_mean', 'upper cost ratio'], axis=1)
         return df_out
     return df
 
@@ -309,7 +314,7 @@ def plot_sim_cost_hist(sim_df, days,j):
     #plt.show(block=False)
  
 
-def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
+def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
     '''run simulation'''
     #global n_sims
     #global n_paths
@@ -435,7 +440,7 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
     
 
 
-def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
+def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
     '''run simulation'''
     #global n_sims
     #global n_paths
@@ -475,8 +480,8 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1
                         
                         
                     
-                sim.plot_sim_backlog()
-                sim.plot_sim_inventory()
+                #sim.plot_sim_backlog()
+                #sim.plot_sim_inventory()
                 
                 j+=1
                 
@@ -492,7 +497,7 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1
             i+=1
             print("i:" + str(i) + '/' + str(n_params), end="")
             print("\r", end="")
-        sum_sim_df = summarize_sims(sim_df)
+        sum_sim_df = summarize_sims(sim_df, lead_time)
         sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
         sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
 
@@ -505,7 +510,7 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1
 
 
 
-def loadpickles(path,alpha=1, simple_network=False, lead_time=0):
+def loadpickles(path,alpha=1, simple_network=False, lead_time=0, zero_order=False):
     simlist = []
     if lead_time == 0:
         file_path = cwd + '/instances'+str(int(alpha*100))
@@ -524,7 +529,10 @@ def loadpickles(path,alpha=1, simple_network=False, lead_time=0):
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
-                simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **loadedpkl['pos_leads'], **{'file_name':pklfile}},alpha=alpha))
+                if lead_time == 0:
+                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}},alpha=alpha))
+                elif lead_time > 0:
+                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **loadedpkl['pos_leads'], **{'file_name':pklfile}, **{'zero_order': zero_order}},alpha=alpha))
 
 
 
