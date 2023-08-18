@@ -5,11 +5,19 @@ from simulation import *
 cwd = os.getcwd()
 
 solve_LP = True 
-
 novel_lower = False
 
+
+"""
+q = (loadedpkl['instance']['B'].T * loadedpkl['instance']['q']).T
+new_q = (q - np.where(q>0, q, np.inf).min(axis=0)[None,:])
+new_q[new_q<0] = 0
+newpkl['instance']['q'] = new_q.sum(axis=1)
+loadedpkl['instance']['q'] = new_q.sum(axis=1)
+"""
+
 # Controls whether we just run the simulation or modpickle files and run with those
-just_sim = False
+just_sim = True
 
 # Whether we solved for the optimal policy, this is almost never True
 optimal_policy=False
@@ -23,14 +31,15 @@ run_manuf = False
 load_manuf = False
 run_prod = True
 load_prod = False
-zero_order = True
+zero_order = False
 
 # Parameters the simulation runs over
 alphas = [.01]
 betas = [.5, .8, .9, 1] 
-deltas = [1, .99, .97, .95, .9, .85, .8]
+deltas = [.99, .97, .95, .9, .85, .8]
 thetas = [.25, .50, .75]
-lead_times = [0]
+lead_times = [3]
+lead_policy = 'randomized'
 # Specify output path, if blank it goes to cwd
 path = ''
 cwd = os.getcwd()
@@ -84,38 +93,33 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
         run='instances'
 
         if lead_time == 0:
+
+            hold_c = loadedpkl['instance']['c']
+            if zero_order:
+                newpkl['instance']['h'] = loadedpkl['instance']['c']
+                loadedpkl['instance']['h'] = loadedpkl['instance']['c'] 
+                newpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
+                loadedpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
+
             # Prepare to solve upper bound
             loadedpkl['instance']['p'] = np.add(np.float_(loadedpkl['instance']['p']), np.float_(min_act_cost(loadedpkl, novel=False)))
             loadedpkl['instance']['q'] = (1-alpha)*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q']
             loadedpkl['instance']['c'] = alpha * loadedpkl['instance']['c']
             
+            
+
             #upper bound
             [upper_cost_opt, upper_r_opt, upper_x_opt, upper_y_opt, upper_opt_time] = nn_opt(loadedpkl['instance'], var_type='C', return_xy=True) #not using scaled, but use true min cost
             loadedpkl['instance']['p'] = newpkl['instance']['p']
 
+            
+            
             #original lower bound for alpha > 1
             if alpha > 1:
-                if zero_order:
-
-                    newpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
-                    loadedpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
-                    """
-                    q = (loadedpkl['instance']['B'].T * loadedpkl['instance']['q']).T
-                    new_q = (q - np.where(q>0, q, np.inf).min(axis=0)[None,:])
-                    new_q[new_q<0] = 0
-                    newpkl['instance']['q'] = new_q.sum(axis=1)
-                    loadedpkl['instance']['q'] = new_q.sum(axis=1)
-                    """
-
                 for d in deltas:
                     [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
                     lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
             elif zero_order:
-                    newpkl['instance']['h'] = np.zeros(len(loadedpkl['instance']['c'])) * alpha
-                    loadedpkl['instance']['h'] = np.zeros(len(loadedpkl['instance']['c'])) * alpha
-                    newpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
-                    loadedpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
-
                     """
                     q = (loadedpkl['instance']['B'].T * loadedpkl['instance']['q']).T
                     new_q = (q - np.where(q>0, q, np.inf).min(axis=0)[None,:])
@@ -127,6 +131,8 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
                     for d in deltas:
                         [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
                         lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
+                    newpkl['instance']['h'] = newpkl['instance']['h'] * alpha
+                
             elif alpha <= 1:
                 #original lower for alpha <= 1
                 # q -> formula of u
@@ -146,7 +152,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
 
 
             #return p back for sim runs
-            loadedpkl['instance'] = newpkl['instance']
+            loadedpkl['instance']['p'] = newpkl['instance']['p']
             newpkl['LP_solution'] = {'r': upper_r_opt, 'x': upper_x_opt, 'y': upper_y_opt, 'cost': lower_dict, 'time': upper_opt_time, 'upper_cost':upper_cost_opt}
             with open(new_path + '/' + file, 'wb') as f:
                 pickle.dump(newpkl, f)
@@ -186,6 +192,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
             instance['q'] = loadedpkl['instance']['q']
             instance['d'] = loadedpkl['instance']['d']
             instance['c'] = loadedpkl['instance']['c']
+            instance['d_L'] = d_sol
             
 
             """
@@ -321,10 +328,10 @@ if __name__ == '__main__':
 
                 print('loadpickles started')
                 ####### dynamic simulation stuff ######
-                simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time)
+                simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time, zero_order=zero_order)
                 print('run_sim started')
                 if lead_time > 0:
-                    run_pos_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
+                    run_pos_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time, lead_policy=lead_policy)
                 elif lead_time == 0:
                     run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
     

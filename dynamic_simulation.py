@@ -20,7 +20,7 @@ seed_rand = np.random.RandomState(0)
 
 cwd = os.getcwd()
 
-n_sims = 20
+n_sims = 5
 days = 100
 
 burn_in = 0
@@ -72,8 +72,6 @@ class Simulation(object):
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
         self.z = np.zeros(len(self.c)) #processing activities
-        if not self.zero_order:
-            self.h = self.c * alpha
         self.sim_cost = 0
         self.ordering_cost = 0
         self.backlog_cost = 0
@@ -89,7 +87,7 @@ class Simulation(object):
         self.min_actv = np.zeros((self.q.shape[0],self.p.shape[0]))
         self.h_bar = np.zeros(self.p.shape[0])
         self.x_k = np.zeros(len(self.q)) 
-        self.num_fill = np.zeros(len(self.q)) 
+        self.num_fill = np.zeros(len(self.q))
 
         if hasattr(self, 'lead_time'):
             #self.u_k = (1/(self.lead_time+1))*(self.q + np.matmul(self.A.T,(self.c - (self.lead_time+1)*self.h)))
@@ -103,9 +101,11 @@ class Simulation(object):
                 self.L_k = (self.theta+1) * self.x.mean(axis=0)
                 self.r = (self.theta+1) * (self.r)
                 self.I = copy.deepcopy(self.r)
+                self.h = self.c * alpha
         else:
             self.lead_time = 0
             self.k = 0
+
             
 
         
@@ -133,6 +133,7 @@ class Simulation(object):
 
     def smart_order(self):
         self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL)) #base stock policy
+        self.z[self.z < 0] = 0
         self.sim_cost += np.matmul(self.z, self.c) #ordering cost
         self.ordering_cost += np.matmul(self.z, self.c)
     
@@ -214,6 +215,25 @@ class Simulation(object):
     def update_B_hat(self):
         self.B_hat += self.D_hat - self.X_tilde
     
+    def update_D_hat_rand(self):
+        self.D_hat = self.X_tilde
+    
+    def update_B_hat_rand(self):
+        self.B_hat = np.matmul(self.min_actv, (self.demand - np.matmul(self.B, self.X_tilde)))
+
+    def update_X_tilde_rand(self):
+        mask = np.where((self.d_L > self.demand).all(axis=1))
+        d_cut = self.d_L[mask, :]
+        index = seed_rand.choice(list(mask[0]))
+        d_L = np.array([self.d_L[index]])
+        x_cut = np.array([self.x[index]])
+        self.D_jt = np.array([np.matmul(self.demand, self.B.T)])
+        denom = np.matmul(d_L, self.B.T)
+        fulfill_propor = (self.D_jt/denom).T
+        W_kt = (np.matmul(x_cut.T, d_L) * fulfill_propor).max(axis=0)
+        X_alt = (self.I + self.z_hist[:,self.lead_time] - np.matmul(self.A, self.X_tilde))/self.A
+        self.X_tilde = np.minimum(W_kt, X_alt)
+
     def update_determ_vars(self):
         self.update_D_hat()
         self.update_B_tilde()
@@ -314,7 +334,7 @@ def plot_sim_cost_hist(sim_df, days,j):
     #plt.show(block=False)
  
 
-def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0):
+def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0, lead_policy = 'proportional'):
     '''run simulation'''
     #global n_sims
     #global n_paths
@@ -380,7 +400,7 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0)
                                 sim.simple_smart_fulfillment()
                             else:
                                 sim.smart_fulfillment()
-                        elif lead_time > 0:
+                        elif lead_time > 0 and lead_policy == 'proportional':
                             sim.deterministic_order()
                             sim.demand_draw()
                             sim.update_D_hat()
@@ -389,6 +409,15 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0)
                             sim.deterministic_fulfillment()
                             sim.update_B_bar() # after dhat, b_tilde
                             sim.update_B_hat() #after dhat and x_tilde
+                        elif lead_time > 0 and lead_policy == 'randomized':
+                            sim.deterministic_order()
+                            sim.demand_draw()
+                            sim.update_D_hat_rand()
+                            sim.update_B_tilde()
+                            sim.update_X_tilde_rand()
+                            sim.deterministic_fulfillment()
+                            sim.update_B_bar() # after dhat, b_tilde
+                            sim.update_B_hat_rand() #after dhat and x_tilde
                         
                         # ordering is done at beginning of period
                         #t is at the end of the period for I and BL
@@ -404,7 +433,7 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0)
                             
                             
                         
-                    #sim.plot_sim_backlog()
+                    sim.plot_sim_backlog()
                     #sim.plot_sim_inventory()
                     
                     j+=1
@@ -460,7 +489,7 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
                 #del sim_list[i]
                 sim.get_min_actv()
                 k=0       
-                while k < days:
+                while sim.k < days:
                         if optimal_policy:
                             sim.simple_smart_order()
                         else:
@@ -476,7 +505,7 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
                         sim.update_backlog()
                         sim.update_inventory()
 
-                        k+=1
+                        sim.k+=1
                         
                         
                     
@@ -530,9 +559,9 @@ def loadpickles(path,alpha=1, simple_network=False, lead_time=0, zero_order=Fals
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
                 if lead_time == 0:
-                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}},alpha=alpha))
+                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}, **{'zero_order': zero_order}},alpha=alpha))
                 elif lead_time > 0:
-                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **loadedpkl['pos_leads'], **{'file_name':pklfile}, **{'zero_order': zero_order}},alpha=alpha))
+                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **loadedpkl['pos_leads'], **{'file_name':pklfile}},alpha=alpha))
 
 
 
