@@ -3,6 +3,8 @@ from dynamic_simulation import *
 from optimals import *
 from simulation import *
 cwd = os.getcwd()
+import warnings
+warnings.filterwarnings("ignore")
 
 solve_LP = True 
 novel_lower = False

@@ -20,7 +20,7 @@ seed_rand = np.random.RandomState(0)
 
 cwd = os.getcwd()
 
-n_sims = 5
+n_sims = 50
 days = 100
 
 burn_in = 0
@@ -217,22 +217,41 @@ class Simulation(object):
     
     def update_D_hat_rand(self):
         self.D_hat = self.X_tilde
+        self.D_hat_hist = np.roll(self.D_hat_hist, 1, axis=1)
+        self.D_hat_hist[:,0] = self.D_hat
     
-    def update_B_hat_rand(self):
-        self.B_hat = np.matmul(self.min_actv, (self.demand - np.matmul(self.B, self.X_tilde)))
+    def update_B_tilde_rand(self):
+        self.B_tilde = np.matmul(self.min_actv, (self.demand - np.matmul(self.B.T, self.X_tilde)))
+        self.B_tilde_hist = np.roll(self.B_tilde_hist, 1, axis=1)
+        self.B_tilde_hist[:,0] = self.B_tilde
 
     def update_X_tilde_rand(self):
-        mask = np.where((self.d_L > self.demand).all(axis=1))
-        d_cut = self.d_L[mask, :]
-        index = seed_rand.choice(list(mask[0]))
+        mask = np.where((self.d_L >= self.demand).all(axis=1))
+        if len(mask[0]) == 0:
+            lst_gt = []
+            for i in range(self.d_L.shape[0]):
+                num_gt = np.sum(self.d_L[i] > self.demand)
+                lst_gt.append(num_gt)
+            index = lst_gt.index(max(lst_gt))
+        else:
+            index = seed_rand.choice(list(mask[0]))
         d_L = np.array([self.d_L[index]])
         x_cut = np.array([self.x[index]])
         self.D_jt = np.array([np.matmul(self.demand, self.B.T)])
+        numerator = x_cut * self.D_jt
         denom = np.matmul(d_L, self.B.T)
-        fulfill_propor = (self.D_jt/denom).T
-        W_kt = (np.matmul(x_cut.T, d_L) * fulfill_propor).max(axis=0)
-        X_alt = (self.I + self.z_hist[:,self.lead_time] - np.matmul(self.A, self.X_tilde))/self.A
-        self.X_tilde = np.minimum(W_kt, X_alt)
+        W_kt = numerator/denom
+        W_kt[0][np.isnan(W_kt[0])] = 0
+        #fulfill_propor = (self.D_jt/denom).T
+        #W_kt = (np.matmul(x_cut.T, d_L) * fulfill_propor).max(axis=0)
+        num = (self.I + self.z_hist[:,self.lead_time] - np.matmul(self.A, self.X_tilde))
+        num[num<0] = 0
+        X_alt = np.empty((0,))
+        for i in range(self.A.shape[1]):
+            X_alt = np.append(X_alt, np.nanmin(num/self.A[:,i])) 
+            #X_alt = np.nanmin(((self.I + self.z_hist[:,self.lead_time] - np.matmul(self.A, self.X_tilde))/self.A.T), axis=1)
+        self.X_tilde = np.minimum(W_kt[0], X_alt)
+        a=1
 
     def update_determ_vars(self):
         self.update_D_hat()
@@ -261,7 +280,7 @@ class Simulation(object):
     def check_equalities(self):
         if (np.round(self.I,2) != np.round(self.r - np.matmul(self.A, np.sum(self.D_hat_hist[:,0:self.lead_time+1], axis=1) - self.B_hat),2)).any():
             print('Equality 1 doesnt hold')
-        if (np.round(self.z,2) != np.round(np.matmul(self.A, (self.D_hat_hist[:,1] + self.B_tilde_hist[:,1])),2)).any():
+        if (np.round(self.z,3) != np.round(np.matmul(self.A, (self.D_hat_hist[:,1] + self.B_tilde_hist[:,1])),3)).any():
             print('Equality 2 doesnt hold')
         if (np.round(self.B_bar,2) != np.round(self.B_hat + np.sum(self.B_tilde_hist[:,0:self.lead_time+1], axis=1),2)).any():
             print('Equality 3 doesnt hold!')
@@ -341,6 +360,7 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
     n_params = len(sim_list)
     column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] #+ list(sim_list[0].cost.keys())
     sim_df = pd.DataFrame(columns = column_names)
+    max_theta_df = pd.DataFrame(columns = column_names)
 
     i=0
 
@@ -357,7 +377,6 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
             max_theta_cols = ['file name', 'simulation cost_mean', 'simulation cost_sem', 'cost_mean', 'cost_sem', 'sim_cost_per_day_mean', 'sim_cost_per_day_sem', 'lower cost ratio']
             thetas_dict = {}
             chosen_theta = max_theta/10
-            max_theta_df = pd.DataFrame(columns = column_names)
             ratios_lst = []
             sim.L_k = (chosen_theta+1) * sim.x.mean(axis=0)
             sim.r = (chosen_theta+1) * (sim.r)
@@ -412,12 +431,12 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
                         elif lead_time > 0 and lead_policy == 'randomized':
                             sim.deterministic_order()
                             sim.demand_draw()
-                            sim.update_D_hat_rand()
-                            sim.update_B_tilde()
                             sim.update_X_tilde_rand()
+                            sim.update_D_hat_rand()
+                            sim.update_B_tilde_rand()
                             sim.deterministic_fulfillment()
                             sim.update_B_bar() # after dhat, b_tilde
-                            sim.update_B_hat_rand() #after dhat and x_tilde
+                            sim.update_B_hat() #after dhat and x_tilde
                         
                         # ordering is done at beginning of period
                         #t is at the end of the period for I and BL
@@ -433,7 +452,7 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
                             
                             
                         
-                    sim.plot_sim_backlog()
+                    #sim.plot_sim_backlog()
                     #sim.plot_sim_inventory()
                     
                     j+=1
@@ -457,9 +476,10 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
             i+=1
             print("i:" + str(i) + '/' + str(n_params), end="")
             print("\r", end="")
-        sum_sim_df = summarize_sims(sim_df)
-        sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
-        sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
+        max_theta_df.to_csv(cwd + '/pos_leads/' + 'newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        #sum_sim_df = summarize_sims(sim_df, lead_time)
+        #sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        #sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
 
         print("Simulation passed")
     
