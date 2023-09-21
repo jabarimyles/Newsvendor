@@ -63,7 +63,7 @@ csv_name = 'newsvendoroutput.csv'
 
 class Simulation(object):
 
-    def __init__(self, dictionary,alpha):
+    def __init__(self, dictionary,alpha, govind_policy):
         # Set attributes from dictionary
         for key in dictionary:
             setattr(self, key, dictionary[key])
@@ -88,6 +88,11 @@ class Simulation(object):
         self.h_bar = np.zeros(self.p.shape[0])
         self.x_k = np.zeros(len(self.q)) 
         self.num_fill = np.zeros(len(self.q))
+        self.p_ubar = np.mean(self.p)
+        self.h_ubar = np.mean(self.h)
+        self.q_ubar = np.min(self.q)
+        self.S_tot = (self.p_ubar - self.q_ubar)/(self.h_ubar + self.p_ubar - self.q_ubar)
+        self.D_tot = np.sum(self.d, axis=0)
 
         if hasattr(self, 'lead_time'):
             #self.u_k = (1/(self.lead_time+1))*(self.q + np.matmul(self.A.T,(self.c - (self.lead_time+1)*self.h)))
@@ -142,6 +147,9 @@ class Simulation(object):
         self.z[1] = max(0, self.BL[1]-1)
         self.sim_cost += np.matmul(self.z, self.c) #ordering cost
         self.ordering_cost += np.matmul(self.z, self.c)
+    
+    def govind_order(self):
+        self.D_tot = np.sum(self.demand)
 
     def smart_fulfillment(self):   
         num_fill =  np.matmul(self.min_actv, self.BL)
@@ -446,7 +454,7 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
                         # Update state variables
                         sim.update_backlog()
                         sim.update_inventory()
-                        sim.check_equalities()
+                        #sim.check_equalities()
                         # End of day
                         sim.k+=1
                             
@@ -559,10 +567,12 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
 
 
 
-def loadpickles(path,alpha=1, simple_network=False, lead_time=0, zero_order=False):
+def loadpickles(path,alpha=1, simple_network=False, lead_time=0, zero_order=False, govind_policy=False):
     simlist = []
     if lead_time == 0:
         file_path = cwd + '/instances'+str(int(alpha*100))
+    elif lead_time == 0 and simple_network and govind_policy:
+        file_path = cwd + '/govind/instances' + str(int(alpha*100))
     elif lead_time > 0 and not simple_network:
         file_path = cwd + '/pos_leads/real_network/lead_out'+str(int(lead_time))
     elif lead_time > 0 and simple_network:
@@ -579,7 +589,7 @@ def loadpickles(path,alpha=1, simple_network=False, lead_time=0, zero_order=Fals
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
                 if lead_time == 0:
-                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}, **{'zero_order': zero_order}},alpha=alpha))
+                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}, **{'zero_order': zero_order}},alpha=alpha, govind_policy=govind_policy))
                 elif lead_time > 0:
                     simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **loadedpkl['pos_leads'], **{'file_name':pklfile}},alpha=alpha))
 

@@ -19,12 +19,13 @@ loadedpkl['instance']['q'] = new_q.sum(axis=1)
 """
 
 # Controls whether we just run the simulation or modpickle files and run with those
-just_sim = True
+just_sim = False
 
 # Whether we solved for the optimal policy, this is almost never True
 optimal_policy=False
 
-simple_network = False
+simple_network = True
+govind_policy = True
 
 #### Run Controls ####
 run_ecom = False
@@ -36,11 +37,11 @@ load_prod = False
 zero_order = False
 
 # Parameters the simulation runs over
-alphas = [.01]
+alphas = [.01] #
 betas = [.5, .8, .9, 1] 
 deltas = [.99, .97, .95, .9, .85, .8]
 thetas = [.25, .50, .75]
-lead_times = [3]
+lead_times = [0]
 lead_policy = 'randomized'
 # Specify output path, if blank it goes to cwd
 path = ''
@@ -73,10 +74,12 @@ def min_act_cost(pkl, novel=False, this_beta=1):
         
         return min_cost
 
-def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False):
+def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, govind_policy=False):
     
-    if lead_time == 0:
+    if lead_time == 0 and not govind_policy:
         new_path = cwd + '/instances'+str(int(alpha*100))
+    elif lead_time == 0 and govind_policy:
+        new_path = cwd + '/govind/instances'+str(int(alpha*100))
     elif lead_time > 0 and simple_network: 
         new_path =  cwd + '/pos_leads/simple_network/instances'+str(int(alpha*100))
     elif lead_time > 0 and not simple_network:
@@ -324,13 +327,13 @@ if __name__ == '__main__':
                         if not os.path.isdir(new_path):
                             os.makedirs(new_path)
                         if not just_sim:
-                            modpickles(path=path,alpha=alpha, novel=novel_lower, lead_time=lead_time)
+                            modpickles(path=path,alpha=alpha, novel=novel_lower, lead_time=lead_time, govind_policy = govind_policy)
                         
                         print(datetime.datetime.now() - begin_time)
 
                 print('loadpickles started')
                 ####### dynamic simulation stuff ######
-                simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time, zero_order=zero_order)
+                simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time, zero_order=zero_order, govind_policy=govind)
                 print('run_sim started')
                 if lead_time > 0:
                     run_pos_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time, lead_policy=lead_policy)
