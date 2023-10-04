@@ -13,6 +13,9 @@ from scipy.stats import sem
 import cProfile
 import time
 from scipy.stats import variation 
+import heapq
+
+from optimals import govind_fill
 #from optimals import sec_stg, ato_opt, nn_opt
 pd.options.mode.chained_assignment = None  # default='warn'
 
@@ -23,7 +26,7 @@ cwd = os.getcwd()
 n_sims = 50
 days = 100
 
-burn_in = 0
+burn_in = days*.10
 
 days_mins_burn = days - burn_in
 
@@ -67,7 +70,7 @@ class Simulation(object):
         # Set attributes from dictionary
         for key in dictionary:
             setattr(self, key, dictionary[key])
-        self.I = np.zeros(dictionary['A'].shape[0])  #Inventory
+        self.I = self.r #np.zeros(dictionary['A'].shape[0])  #Inventory
         self.I_hist = np.zeros(dictionary['A'].shape[0])
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
@@ -89,10 +92,20 @@ class Simulation(object):
         self.x_k = np.zeros(len(self.q)) 
         self.num_fill = np.zeros(len(self.q))
         self.p_ubar = np.mean(self.p)
-        self.h_ubar = np.mean(self.h)
-        self.q_ubar = np.min(self.q)
-        self.S_tot = (self.p_ubar - self.q_ubar)/(self.h_ubar + self.p_ubar - self.q_ubar)
-        self.D_tot = np.sum(self.d, axis=0)
+        if govind_policy:
+            self.h = self.c*alpha
+            self.h_ubar = np.mean(self.h)
+            self.q_ubar = np.min(self.q)
+            self.S_tot = (self.p_ubar - self.q_ubar)/(self.h_ubar + self.p_ubar - self.q_ubar)
+            self.D_tot = np.sum(self.d, axis=1)
+            kth = self.d.shape[0] - int(np.round(self.S_tot*1000)) + 1
+
+            self.r = self.d[heapq.nlargest(kth, range(len(self.D_tot)), key=self.D_tot.__getitem__)[-1]]
+            self.instance = dictionary
+            self.I = copy.deepcopy(self.r)
+
+
+
 
         if hasattr(self, 'lead_time'):
             #self.u_k = (1/(self.lead_time+1))*(self.q + np.matmul(self.A.T,(self.c - (self.lead_time+1)*self.h)))
@@ -149,14 +162,25 @@ class Simulation(object):
         self.ordering_cost += np.matmul(self.z, self.c)
     
     def govind_order(self):
+        self.z = self.r - self.I + np.matmul(self.A,np.matmul(self.min_actv, self.BL))
         self.D_tot = np.sum(self.demand)
+        self.z[self.z < 0] = 0
+        self.sim_cost += np.matmul(self.z, self.c) #ordering cost
+        self.ordering_cost += np.matmul(self.z, self.c)
 
-    def smart_fulfillment(self):   
+    def smart_fulfillment(self):
         num_fill =  np.matmul(self.min_actv, self.BL)
-        self.x_k += num_fill  #Update fulfilled
+        self.x_k = num_fill  #Update fulfilled
         self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.x_k)
-
+    
+    def govind_fulfillment(self):   
+        current_inventory = self.I + self.z
+        current_demand = self.demand + self.BL
+        self.x_k = govind_fill(self.instance, curr_inv=current_inventory, curr_dem=current_demand, var_type='C', return_xy=True)  #Update fulfilled
+        self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.x_k)
+ 
 
     def simple_smart_fulfillment(self):   
         self.x_k[0] = min(self.I[0]+self.z[0], self.BL[0]+self.demand[0])
@@ -170,9 +194,9 @@ class Simulation(object):
     def demand_draw(self):
         index = seed_rand.choice(self.mu.shape[0], p=self.mu)
         self.demand_index = index
-        self.demand = self.d[index]
+        self.demand = self.d[self.demand_index]
         if self.lead_time == 0:
-            self.x_k = copy.deepcopy(self.x[index])
+            self.x_k = copy.deepcopy(self.x[self.demand_index])
         
 
     def get_cheapest(self):
@@ -546,7 +570,7 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
                 sim.cost_dict = copy.deepcopy(sim.cost)
                 sim.largest_lower = max(sim.cost, key=sim.cost.get)
                 sim.cost = max(sim.cost.values())
-                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.largest_lower, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]+ list(sim.cost_dict.values())]), columns=sim_df.columns)
+                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.largest_lower, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]+ list(sim.cost_dict.values())]), columns=column_names)
                 sim_df = pd.concat([sim_df,new_row], ignore_index=True)
 
                 #plot_sim_cost_hist(sim_df, days,j)
@@ -565,11 +589,72 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
         print("Simulation failed")
 
 
+def run_govind_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
+    '''run simulation'''
+    #global n_sims
+    #global n_paths
+    n_params = len(sim_list)
+    column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim_list[0].cost.keys())
+    sim_df = pd.DataFrame(columns = column_names)
+
+    i=0
+
+    try:
+        while i < n_params:
+            
+            j=0
+            while j < n_sims:    
+                sim = copy.deepcopy(sim_list[i])
+                column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] + list(sim.cost.keys())
+                #del sim_list[i]
+                sim.get_min_actv()
+                k=0       
+                while sim.k < days:
+                        sim.govind_order()
+
+                        sim.demand_draw()
+                        
+                        sim.govind_fulfillment()
+
+                        sim.update_backlog()
+                        sim.update_inventory()
+
+                        sim.k+=1
+                        
+                        
+                    
+                #sim.plot_sim_backlog()
+                #sim.plot_sim_inventory()
+                
+                j+=1
+                
+
+                sim.cost_dict = copy.deepcopy(sim.cost)
+                sim.largest_lower = max(sim.cost, key=sim.cost.get)
+                sim.cost = max(sim.cost.values())
+                new_row = pd.DataFrame(data=np.array([[sim.file_name, j, sim.sim_cost, sim.cost, sim.largest_lower, sim.upper_cost, sim.holding_cost, sim.backlog_cost, sim.fulfillment_cost, sim.ordering_cost]+ list(sim.cost_dict.values())]), columns=sim_df.columns)
+                sim_df = pd.concat([sim_df,new_row], ignore_index=True)
+
+                #plot_sim_cost_hist(sim_df, days,j)
+                
+            i+=1
+            print("i:" + str(i) + '/' + str(n_params), end="")
+            print("\r", end="")
+        sum_sim_df = summarize_sims(sim_df, lead_time)
+        sum_sim_df.to_csv('govind_newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        sim_df.to_csv('govind_newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
+
+        print("Simulation passed")
+    
+
+    except:
+        print("Simulation failed")
+
 
 
 def loadpickles(path,alpha=1, simple_network=False, lead_time=0, zero_order=False, govind_policy=False):
     simlist = []
-    if lead_time == 0:
+    if lead_time == 0 and not govind_policy:
         file_path = cwd + '/instances'+str(int(alpha*100))
     elif lead_time == 0 and simple_network and govind_policy:
         file_path = cwd + '/govind/instances' + str(int(alpha*100))
@@ -588,10 +673,12 @@ def loadpickles(path,alpha=1, simple_network=False, lead_time=0, zero_order=Fals
                 openpkl = open(file_path + '/' + pklfile , 'rb')
                 loadedpkl = pickle.load(openpkl)
                 #print(loadedpkl)
+                if govind_policy:
+                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}},alpha=alpha, govind_policy=govind_policy))
                 if lead_time == 0:
                     simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **{'file_name':pklfile}, **{'zero_order': zero_order}},alpha=alpha, govind_policy=govind_policy))
                 elif lead_time > 0:
-                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **loadedpkl['pos_leads'], **{'file_name':pklfile}},alpha=alpha))
+                    simlist.append(Simulation({**loadedpkl['LP_solution'], **loadedpkl['instance'], **loadedpkl['pos_leads'], **{'file_name':pklfile}},alpha=alpha, govind_policy=govind_policy))
 
 
 

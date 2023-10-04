@@ -196,6 +196,7 @@ def nn_opt(nn_inst, var_type, return_xy=False):
 
 
 def govind_fill(nn_inst, var_type, curr_inv, curr_dem, return_xy=True):
+    #i+z, b+d
     # var_type will be the gurobi vtype variable, 'C'->continuous, 'I'->integer
     # nn_inst is: {'c': , 'q': , 'p': , 'd': , 'mu': , 'A': , 'B': }
     #c = nn_inst['c']
@@ -226,14 +227,14 @@ def govind_fill(nn_inst, var_type, curr_inv, curr_dem, return_xy=True):
     #for i in components:
     #    r_o[i] = nn.addVar(vtype=var_type, name='r_%s' % i, obj=c[i], lb=0)
     for k in activities:
-        x_o[k] = nn.addVar(vtype=var_type, name='x_%s' % k, obj=q[k] - np.matmul(B, p)[k], lb=0)  # , ub=d[w, j]) #TODO: substract out np.matmul(p, B)
+        x_o[k] = nn.addVar(vtype=var_type, name='x_%s' % k, obj=q[k] - np.matmul(B, p)[k], lb=0)  # , ub=d[w, j]) 
     #for w in scenarios:
     #    for j in products:
     #        y_o[w, j] = nn.addVar(vtype=var_type, name='y_%s' % j + '%s' % w, obj=p[j] * mu[w], lb=0)  # , ub=d[w,j])
     nn.update()
 
     cinv_o = {}  # inventory
-    cdem_o = {}  # inventory
+    cdem_o = {}  # demand
     #for w in scenarios:
     xvar = [x_o[k] for k in activities]
     for i in components:
