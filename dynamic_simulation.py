@@ -24,7 +24,7 @@ seed_rand = np.random.RandomState(0)
 cwd = os.getcwd()
 
 n_sims = 50
-days = 100
+days = 500
 
 burn_in = days*.10
 
@@ -70,7 +70,7 @@ class Simulation(object):
         # Set attributes from dictionary
         for key in dictionary:
             setattr(self, key, dictionary[key])
-        self.I = self.r #np.zeros(dictionary['A'].shape[0])  #Inventory
+        self.I = copy.deepcopy(self.r) #np.zeros(dictionary['A'].shape[0])  #Inventory
         self.I_hist = np.zeros(dictionary['A'].shape[0])
         self.BL = np.zeros(dictionary['p'].shape[0])  #Backlog
         self.BL_hist = np.zeros(dictionary['p'].shape[0])
@@ -144,7 +144,7 @@ class Simulation(object):
             cost_dict = {}
             for j in pos_actvs:
                 actv_cost = np.matmul(self.h ,self.A[:,j])
-                cost_dict[j] = self.h[j] + actv_cost
+                cost_dict[j] = actv_cost #self.h[j] + 
             h_bar.append(max(cost_dict.values()) )
             #self.h_bar[max(cost_dict,key=cost_dict.get)] +=  #lowest activity for given product
         self.h_bar = np.array(h_bar)
@@ -170,7 +170,7 @@ class Simulation(object):
 
     def smart_fulfillment(self):
         num_fill =  np.matmul(self.min_actv, self.BL)
-        self.x_k = num_fill  #Update fulfilled
+        self.x_k += num_fill  #Update fulfilled
         self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.x_k)
     
@@ -400,15 +400,16 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
         while i < n_params:
             sim = copy.deepcopy(sim_list[i])
             sim.get_min_actv()
-            #sim.get_max_hold()
-            #mu_j = sim.d.mean(axis=0)
-            #numer = np.matmul((sim.p + sim.h_bar), (mu_j * variation(sim.d, axis=0)**2))
-            #denom = np.matmul(mu_j, np.matmul(sim.min_actv.T, sim.q))
-            #max_theta = np.sqrt(numer/denom)
-            max_theta = 3
+            sim.get_max_hold()
+            mu_j = sim.d.mean(axis=0)
+            numer = np.matmul((sim.p + sim.h_bar), (mu_j * variation(sim.d, axis=0)**2))
+            denom = np.matmul(mu_j, np.matmul(sim.min_actv.T, sim.q))
+            max_theta = np.sqrt(numer/denom)
+            #max_theta = 3
             max_theta_cols = ['file name', 'simulation cost_mean', 'simulation cost_sem', 'cost_mean', 'cost_sem', 'sim_cost_per_day_mean', 'sim_cost_per_day_sem', 'lower cost ratio']
             thetas_dict = {}
-            chosen_theta = max_theta/10
+            theta_increments = 20
+            chosen_theta = max_theta/theta_increments
             ratios_lst = []
             sim.L_k = (chosen_theta+1) * sim.x.mean(axis=0)
             sim.r = (chosen_theta+1) * (sim.r)
@@ -429,7 +430,6 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
                     #numer = np.matmul((sim.p + sim.h_bar), (mu_j * variation(sim.d, axis=0)**2))
                     #denom = np.matmul(mu_j, np.matmul(sim.min_actv.T, sim.q))
                     #max_theta = np.sqrt(numer/denom) 
-                    max_theta = 3
                     column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] 
                     # if novel_lower == True   
                     #column_names = ['file name', 'sim number', 'simulation cost', 'cost', 'largest lower', 'upper cost', 'holding cost', 'backlog cost', 'fulfillment cost', 'ordering cost'] #+ list(sim.cost.keys())
@@ -501,14 +501,14 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
                 hold_df['chosen_theta'] = chosen_theta
                 thetas_dict[hold_df['lower cost ratio'][0]] = hold_df
                 ratios_lst.append(hold_df['lower cost ratio'][0])
-                chosen_theta += max_theta/10
+                chosen_theta += max_theta/theta_increments
                 if (len(ratios_lst) >=2) and  (ratios_lst[-2] < ratios_lst[-1]):
                     break
             max_theta_df = pd.concat([max_theta_df, thetas_dict[min(thetas_dict.keys())]], ignore_index=True)        
             i+=1
             print("i:" + str(i) + '/' + str(n_params), end="")
             print("\r", end="")
-        max_theta_df.to_csv(cwd + '/pos_leads/' + 'newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
+        max_theta_df.to_csv(cwd + '/pos_leads/' + 'newsvendoroutput_summary' + str(int(alpha*100)) + 'L' + str(lead_time) + '.csv', sep='\t')
         #sum_sim_df = summarize_sims(sim_df, lead_time)
         #sum_sim_df.to_csv('newsvendoroutput_summary' + str(int(alpha*100)) + '.csv', sep='\t')
         #sim_df.to_csv('newsvendoroutput' + str(int(alpha*100)) + '.csv', sep='\t')
@@ -561,8 +561,8 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
                         
                         
                     
-                #sim.plot_sim_backlog()
-                #sim.plot_sim_inventory()
+                sim.plot_sim_backlog()
+                sim.plot_sim_inventory()
                 
                 j+=1
                 

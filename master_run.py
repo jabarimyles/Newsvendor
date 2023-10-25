@@ -34,15 +34,15 @@ run_manuf = False
 load_manuf = False
 run_prod = True
 load_prod = False
-zero_order = True
+zero_order = False
 
 # Parameters the simulation runs over
-alphas = [.01, .03, .05, .10, .25, .50, .75, 1] 
+alphas = [.01] 
 betas = [.5, .8, .9, 1] 
 deltas = [.99, .97, .95, .9, .85, .8]
 thetas = [.25, .50, .75]
-lead_times = [0]
-lead_policy = 'randomized'
+lead_times = [30, 40]
+lead_policy = 'proportional'
 # Specify output path, if blank it goes to cwd
 path = ''
 cwd = os.getcwd()
@@ -99,10 +99,11 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
 
                     
 
-
+        """
         if lead_time == 0:
-
+            
             hold_c = loadedpkl['instance']['c']
+            hold_inst = copy.deepcopy(loadedpkl['instance'])
             if zero_order:
                 newpkl['instance']['h'] = loadedpkl['instance']['c'] * alpha
                 loadedpkl['instance']['h'] = alpha * loadedpkl['instance']['c'] 
@@ -110,7 +111,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
 
             # Prepare to solve upper bound
             loadedpkl['instance']['p'] = np.add(np.float_(loadedpkl['instance']['p']), np.float_(min_act_cost(loadedpkl, novel=False)))
-            loadedpkl['instance']['q'] = (1-alpha)*np.matmul(hold_c,loadedpkl['instance']['A'])+loadedpkl['instance']['q']
+            loadedpkl['instance']['q'] = (1-alpha)*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q']
             loadedpkl['instance']['c'] = alpha * loadedpkl['instance']['c']
             
             
@@ -118,6 +119,8 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
             #upper bound
 
             [upper_cost_opt, upper_r_opt, upper_x_opt, upper_y_opt, upper_opt_time] = nn_opt(loadedpkl['instance'], var_type='C', return_xy=True) #not using scaled, but use true min cost
+            [upper_cost_opt_other, upper_r_opt_other, upper_x_opt_other, upper_y_opt_other, upper_opt_time_other] = nn_opt(hold_inst, var_type='C', return_xy=True) #not using scaled, but use true min cost
+
             loadedpkl['instance']['p'] = newpkl['instance']['p']
 
 
@@ -125,6 +128,42 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
             if alpha > 1:
                 for d in deltas:
                     
+                    [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
+                    lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
+            elif zero_order:
+                    for d in deltas:
+                        [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
+                        lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
+                    newpkl['instance']['h'] = hold_c* alpha
+
+            """
+        if lead_time == 0:
+
+            hold_c = copy.deepcopy(loadedpkl['instance']['c'])
+            hold_inst = copy.deepcopy(loadedpkl['instance'])
+            if zero_order:
+                newpkl['instance']['h'] = loadedpkl['instance']['c'] * alpha
+                loadedpkl['instance']['c'] = loadedpkl['instance']['c'] * alpha
+                newpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
+                #loadedpkl['instance']['c'] = np.zeros(len(loadedpkl['instance']['c']))
+
+            # Prepare to solve upper bound
+            loadedpkl['instance']['p'] = np.add(np.float_(loadedpkl['instance']['p']), np.float_(min_act_cost(loadedpkl, novel=False)))
+            loadedpkl['instance']['q'] = (1-alpha)*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q']
+            #loadedpkl['instance']['c'] = alpha * loadedpkl['instance']['c']
+            
+            
+
+            #upper bound
+            [upper_cost_opt, upper_r_opt, upper_x_opt, upper_y_opt, upper_opt_time] = nn_opt(loadedpkl['instance'], var_type='C', return_xy=True) #not using scaled, but use true min cost
+            loadedpkl['instance']['p'] = newpkl['instance']['p']
+            loadedpkl['instance']['q'] = newpkl['instance']['q']
+
+            
+            
+            #original lower bound for alpha > 1
+            if alpha > 1:
+                for d in deltas:
                     [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
                     lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
             elif zero_order:
@@ -139,9 +178,8 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
                     for d in deltas:
                         [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
                         lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
-                    newpkl['instance']['h'] = hold_c* alpha
+                    newpkl['instance']['h'] = newpkl['instance']['h'] * alpha
 
-                
             elif alpha <= 1:
                 #original lower for alpha <= 1
                 # q -> formula of u
