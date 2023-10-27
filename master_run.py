@@ -19,7 +19,7 @@ loadedpkl['instance']['q'] = new_q.sum(axis=1)
 """
 
 # Controls whether we just run the simulation or modpickle files and run with those
-just_sim = False
+just_sim = True
 
 # Whether we solved for the optimal policy, this is almost never True
 optimal_policy=False
@@ -39,10 +39,10 @@ zero_order = False
 # Parameters the simulation runs over
 alphas = [.01] 
 betas = [.5, .8, .9, 1] 
-deltas = [.99, .97, .95, .9, .85, .8]
+deltas = [1, .99, .97, .95, .9, .85, .8 ]
 thetas = [.25, .50, .75]
-lead_times = [30, 40]
-lead_policy = 'proportional'
+lead_times = [3,10, 20, 30, 40, 50]
+lead_policy = 'randomized'
 # Specify output path, if blank it goes to cwd
 path = ''
 cwd = os.getcwd()
@@ -141,6 +141,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
 
             hold_c = copy.deepcopy(loadedpkl['instance']['c'])
             hold_inst = copy.deepcopy(loadedpkl['instance'])
+            loadedpkl['instance']['q'] = np.zeros(len(loadedpkl['instance']['q']))
             if zero_order:
                 newpkl['instance']['h'] = loadedpkl['instance']['c'] * alpha
                 loadedpkl['instance']['c'] = loadedpkl['instance']['c'] * alpha
@@ -149,17 +150,13 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
 
             # Prepare to solve upper bound
             loadedpkl['instance']['p'] = np.add(np.float_(loadedpkl['instance']['p']), np.float_(min_act_cost(loadedpkl, novel=False)))
-            loadedpkl['instance']['q'] = (1-alpha)*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q']
+            loadedpkl['instance']['q'] = -np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q']
+            
             #loadedpkl['instance']['c'] = alpha * loadedpkl['instance']['c']
-            
-            
 
             #upper bound
             [upper_cost_opt, upper_r_opt, upper_x_opt, upper_y_opt, upper_opt_time] = nn_opt(loadedpkl['instance'], var_type='C', return_xy=True) #not using scaled, but use true min cost
-            loadedpkl['instance']['p'] = newpkl['instance']['p']
-            loadedpkl['instance']['q'] = newpkl['instance']['q']
-
-            
+            loadedpkl['instance']['p'] = newpkl['instance']['p']            
             
             #original lower bound for alpha > 1
             if alpha > 1:
@@ -178,7 +175,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
                     for d in deltas:
                         [lower_cost_opt, lower_r_opt, lower_x_opt, lower_y_opt, lower_opt_time] = nn_opt_high(loadedpkl['instance'], var_type='C', return_xy=True, delta=d) #never uses scaled
                         lower_dict[run+'_original' + '_alpha' + str(alpha)  + '_delta' + str(d)] = lower_cost_opt
-                    newpkl['instance']['h'] = newpkl['instance']['h'] * alpha
+                    newpkl['instance']['q'] = np.zeros(len(loadedpkl['instance']['q']))
 
             elif alpha <= 1:
                 #original lower for alpha <= 1
@@ -201,6 +198,7 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
 
             #return p back for sim runs
             newpkl['instance']['h'] = hold_c * alpha
+            
             loadedpkl['instance']['p'] = newpkl['instance']['p']
             newpkl['LP_solution'] = {'r': upper_r_opt, 'x': upper_x_opt, 'y': upper_y_opt, 'cost': lower_dict, 'time': upper_opt_time, 'upper_cost':upper_cost_opt}
             with open(new_path + '/' + file, 'wb') as f:
@@ -351,7 +349,7 @@ if __name__ == '__main__':
     for alpha in alphas:
         for lead_time in lead_times:
             if lead_time == 0 and not govind_policy:
-                orig_path = cwd + '/instances'
+                orig_path = cwd + '/instances' 
             elif lead_time == 0 and  govind_policy:
                 orig_path = cwd + '/newpickle/instances' + str(int(alpha*100))
             elif lead_time > 0 and not simple_network:

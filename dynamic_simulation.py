@@ -24,7 +24,7 @@ seed_rand = np.random.RandomState(0)
 cwd = os.getcwd()
 
 n_sims = 50
-days = 500
+days = 200
 
 burn_in = days*.10
 
@@ -370,9 +370,11 @@ def summarize_sims(df, lead_time):
     df['lower cost ratio'] = df['sim_cost_per_day_mean']/df['cost_mean']
     if lead_time == 0:
         df['upper cost ratio'] = df['sim_cost_per_day_mean']/df['upper cost_mean']
+    """
     if lead_time == 0:
         df_out = df.drop(['upper cost_sem', 'upper cost_mean', 'upper cost ratio'], axis=1)
         return df_out
+    """
     return df
 
 def plot_sim_cost_hist(sim_df, days,j):
@@ -405,7 +407,6 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
             numer = np.matmul((sim.p + sim.h_bar), (mu_j * variation(sim.d, axis=0)**2))
             denom = np.matmul(mu_j, np.matmul(sim.min_actv.T, sim.q))
             max_theta = np.sqrt(numer/denom)
-            #max_theta = 3
             max_theta_cols = ['file name', 'simulation cost_mean', 'simulation cost_sem', 'cost_mean', 'cost_sem', 'sim_cost_per_day_mean', 'sim_cost_per_day_sem', 'lower cost ratio']
             thetas_dict = {}
             theta_increments = 20
@@ -561,8 +562,8 @@ def run_sim(sim_list,alpha=1, novel=False, optimal_policy=False, lead_time=1):
                         
                         
                     
-                sim.plot_sim_backlog()
-                sim.plot_sim_inventory()
+                #sim.plot_sim_backlog()
+                #sim.plot_sim_inventory()
                 
                 j+=1
                 
