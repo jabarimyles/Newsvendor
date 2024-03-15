@@ -34,15 +34,16 @@ run_manuf = False
 load_manuf = False
 run_prod = True
 load_prod = False
-zero_order = False
+zero_order = True
 
 # Parameters the simulation runs over
 alphas = [.01] 
 betas = [.5, .8, .9, 1] 
 deltas = [1, .99, .97, .95, .9, .85, .8 ]
 thetas = [.25, .50, .75]
-lead_times = [3,10, 20, 30, 40, 50]
-lead_policy = 'randomized'
+lead_times = [10]
+mixed_lead_times = False
+lead_policy = 'LP_fill'
 # Specify output path, if blank it goes to cwd
 path = ''
 cwd = os.getcwd()
@@ -204,7 +205,80 @@ def modpickles(path, alpha=1, novel=True, lead_time=0, simple_network=False, gov
             with open(new_path + '/' + file, 'wb') as f:
                 pickle.dump(newpkl, f)
 
-        elif lead_time > 0:
+        elif lead_time > 0 and mixed_lead_times != True:
+            mean_vec = loadedpkl['instance']['d'].mean(axis=0)
+            variance = np.var(loadedpkl['instance']['d'], axis=0)
+            n = loadedpkl['instance']['d'].shape[1]
+            samples = loadedpkl['instance']['d'].shape[0]
+            d = loadedpkl['instance']['d']
+            d_sol = loadedpkl['instance']['d_sol']
+            """
+            if dist == 'indep':
+                d_sol = np.maximum(indep_rand.multivariate_normal(mean=mean_vec*(lead_time+1), cov=(np.identity(n)*variance)*(lead_time+1),size=samples),0)
+            if dist == 'pos':
+                d_sol = np.maximum(pos_cor_rand.multivariate_normal(mean=mean_vec*(lead_time+1), cov=(variance*(np.identity(n) + 0.5*(np.ones([n,n]) - np.identity(n))))*(lead_time+1),size=samples),0)
+            if dist == 'neg': 
+                d_sol = np.maximum(neg_cor_rand.multivariate_normal(mean=mean_vec*(lead_time+1), cov=(variance*(np.identity(n) + (-1/(n-1))*(np.ones([n,n]) - np.identity(n))))*(lead_time+1),size=samples),0)
+            """
+
+            # Create cost vars for solving SP
+            # ordering cost, activity and shortage cost
+            #ordering_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['c'], np.matmul(loadedpkl['instance']['A'],loadedpkl['LP_solution']['x'].T))
+            #activity_cost = (1/lead_time+1) * np.matmul(loadedpkl['instance']['q'], loadedpkl['LP_solution']['x']).mean(axis=0)
+            #shortage_cost = np.matmul(loadedpkl['instance']['p'], loadedpkl['LP_solution']['y']).mean(axis=0)
+            h = (alpha * loadedpkl['instance']['c']) #holding cost for SP
+
+            u_k = ((1-alpha*(lead_time+1))*np.matmul(loadedpkl['instance']['c'],loadedpkl['instance']['A'])+loadedpkl['instance']['q'])/(lead_time+1) #long-run activity cost
+
+            #u_k = (1/(lead_time+1))*(loadedpkl['instance']['q'] + np.matmul(loadedpkl['instance']['A'].T, (loadedpkl['instance']['c'] - ((lead_time+1)*h))))
+
+            instance = {'c': h, 'q': u_k, 'p': loadedpkl['instance']['p'], 'd': d_sol, 'mu': mu, 'A': loadedpkl['instance']['A'], 'B':loadedpkl['instance']['B'], 'lead_time':lead_time}
+            [cost, r, x, y, time] = nn_opt(instance, var_type='C', return_xy=True)
+
+
+            # Reset activity cost, demand, and ordering cost for simulation
+            instance['q'] = loadedpkl['instance']['q']
+            instance['d'] = loadedpkl['instance']['d']
+            instance['c'] = loadedpkl['instance']['c']
+            instance['d_L'] = d_sol
+            
+
+            """
+            holding_cost = np.mean(np.subtract(np.matmul(r,h), np.matmul(h.T,np.matmul(A,x.T))))
+            ordering_cost = 1/(lead_time+1) * np.mean(np.matmul(c.T, np.matmul(A, x.T)))
+            activity_cost = 1/(lead_time+1) * np.mean(np.matmul(u_k,x.T))
+            shortage_cost = np.mean(np.matmul(y,p))
+
+            instance['holding_cost_SP'] = holding_cost
+            instance['ordering_cost_SP'] = ordering_cost
+            instance['activity_cost_SP'] = activity_cost
+            instance['shortage_cost_SP'] = shortage_cost
+            """
+
+            # Calculate mean of x and y
+            x_bar = x.mean(axis=0)
+            y_bar = y.mean(axis=0)
+
+            # Calculate mean demands 
+            exp_d = d_sol.mean(axis=0)
+            exp_d_jk = np.matmul(loadedpkl['instance']['B'],d_sol.mean(axis=0))
+
+            # Calculate phi and psi proportions
+            phi = x_bar/exp_d_jk
+            psi = y_bar/exp_d
+            # np.matmul(self.phi.T, self.B) + self.psi
+            # Add phi, psi and lead time to the pickle file
+            pos_leads = {'phi':phi, 'psi':psi, 'lead_time':lead_time}
+            LP_solution = {'cost':cost, 'r':r, 'x':x, 'y':y, 'time':time} 
+            instance_pkl = {'instance': instance, 'LP_solution': LP_solution, 'pos_leads': pos_leads}
+
+
+            with open(new_path + '/' + file, 'wb') as f:
+                pickle.dump(instance_pkl, f)
+            
+
+        elif lead_time > 0 and mixed_lead_times == True:
+
             mean_vec = loadedpkl['instance']['d'].mean(axis=0)
             variance = np.var(loadedpkl['instance']['d'], axis=0)
             n = loadedpkl['instance']['d'].shape[1]

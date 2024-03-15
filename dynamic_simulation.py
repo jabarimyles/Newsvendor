@@ -15,7 +15,7 @@ import time
 from scipy.stats import variation 
 import heapq
 
-from optimals import govind_fill
+from optimals import govind_fill, LP_fill
 #from optimals import sec_stg, ato_opt, nn_opt
 pd.options.mode.chained_assignment = None  # default='warn'
 
@@ -24,7 +24,7 @@ seed_rand = np.random.RandomState(0)
 cwd = os.getcwd()
 
 n_sims = 50
-days = 200
+days = 100
 
 burn_in = days*.10
 
@@ -92,6 +92,7 @@ class Simulation(object):
         self.x_k = np.zeros(len(self.q)) 
         self.num_fill = np.zeros(len(self.q))
         self.p_ubar = np.mean(self.p)
+        self.instance = dictionary
         if govind_policy:
             self.h = self.c*alpha
             self.h_ubar = np.mean(self.h)
@@ -174,13 +175,20 @@ class Simulation(object):
         self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.x_k)
     
+    
     def govind_fulfillment(self):   
         current_inventory = self.I + self.z
         current_demand = self.demand + self.BL
         self.x_k = govind_fill(self.instance, curr_inv=current_inventory, curr_dem=current_demand, var_type='C', return_xy=True)  #Update fulfilled
         self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
         self.fulfillment_cost += np.sum(self.q * self.x_k)
- 
+
+    def LP_fulfillment(self):   
+        current_inventory = self.I + self.z_hist[:,self.lead_time] # z from a lead time ago
+        current_demand = self.demand + self.BL
+        self.x_k = LP_fill(self.instance, curr_inv=current_inventory, curr_dem=current_demand, var_type='C', return_xy=True)  #Update fulfilled
+        self.sim_cost += np.sum(self.q * self.x_k) #fulfillment cost
+        self.fulfillment_cost += np.sum(self.q * self.x_k)
 
     def simple_smart_fulfillment(self):   
         self.x_k[0] = min(self.I[0]+self.z[0], self.BL[0]+self.demand[0])
@@ -470,6 +478,11 @@ def run_pos_sim(sim_list,alpha=1, novel=False, optimal_policy=False,lead_time=0,
                             sim.deterministic_fulfillment()
                             sim.update_B_bar() # after dhat, b_tilde
                             sim.update_B_hat() #after dhat and x_tilde
+                        elif lead_time > 0 and lead_policy == 'LP_fill':
+                            sim.deterministic_order()
+                            sim.demand_draw()
+                            sim.LP_fulfillment()
+
                         
                         # ordering is done at beginning of period
                         #t is at the end of the period for I and BL

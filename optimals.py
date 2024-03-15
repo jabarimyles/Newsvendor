@@ -275,6 +275,87 @@ def govind_fill(nn_inst, var_type, curr_inv, curr_dem, return_xy=True):
         del nn
         print("Error in Govind LP!")
 
+
+def LP_fill(nn_inst, var_type, curr_inv, curr_dem, return_xy=True):
+    #i+z, b+d
+    # var_type will be the gurobi vtype variable, 'C'->continuous, 'I'->integer
+    # nn_inst is: {'c': , 'q': , 'p': , 'd': , 'mu': , 'A': , 'B': }
+    #c = nn_inst['c']
+    #d = nn_inst['d']
+    #mu = nn_inst['mu']
+
+    q = nn_inst['q']
+    p = nn_inst['p']
+    A = nn_inst['A']
+    B = nn_inst['B']
+
+
+    [M, L] = A.shape
+    #[W, N] = d.shape
+    N = p.shape[0]
+
+    components = range(M)
+    activities = range(L)
+    products = range(N)
+    #scenarios = range(W)
+
+    start = time.time()
+    nn = Model('NN')
+    # nn.Params.Method = 1
+    #r_o = {}
+    x_o = {}
+    y_o = {}
+    #for i in components:
+    #    r_o[i] = nn.addVar(vtype=var_type, name='r_%s' % i, obj=c[i], lb=0)
+    for k in activities:
+        x_o[k] = nn.addVar(vtype=var_type, name='x_%s' % k, obj=q[k], lb=0)  # , ub=d[w, j]) 
+    #for w in scenarios:
+    for j in products:
+        y_o[j] = nn.addVar(vtype=var_type, name='y_%s' % j, obj=p[j], lb=0)  # , ub=d[w,j])
+    nn.update()
+
+    cinv_o = {}  # inventory
+    cdem_o = {}  # demand
+    #for w in scenarios:
+    xvar = [x_o[k] for k in activities]
+    for i in components:
+        cinv_o[i] = nn.addConstr(LinExpr(A[i, :], xvar) <= curr_inv[i], name='cinv_o_%s' % i)
+    for j in products:
+        cdem_o[j] = nn.addConstr(LinExpr(B[:, j], xvar) + y_o[j] == curr_dem[j], name='cdem_o_%s' % j)
+
+    nn.update()
+
+    nn.setAttr("ModelSense", GRB.MINIMIZE)
+    nn.setParam('OutputFlag', False) #will give me output if True
+    nn.optimize()
+
+    opt_time = time.time() - start
+
+    nn_opt = nn.ObjVal
+
+    #r_opt = np.empty(M)
+    #for i in components:
+    #    r_opt[i] = r_o[i].x
+
+    ##    # remove variables and constraints
+    ##    for v in range(nn.NumVars):
+    ##        nn.remove(nn.getVars()[v])
+    ##    for c in range(nn.NumConstrs):
+    ##        nn.remove(nn.getConstrs()[c])
+    ##    nn.update()
+
+    if return_xy:
+        x_opt = np.empty([L])
+        #y_opt = np.empty([N])
+        for k in activities:
+            x_opt[k] = x_o[k].x
+
+        del nn
+        return x_opt
+    else:
+        del nn
+        print("Error in Govind LP!")
+
 def nn_opt_high(nn_inst, var_type, return_xy=False, delta = 0.95):
     """ solve ATO problem """
     # var_type will be the gurobi vtype variable, 'C'->continuous, 'I'->integer
