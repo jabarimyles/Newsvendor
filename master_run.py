@@ -41,7 +41,7 @@ alphas = [.01]
 betas = [.5, .8, .9, 1] 
 deltas = [1, .99, .97, .95, .9, .85, .8 ]
 thetas = [.25, .50, .75]
-lead_times = [3, 10, 20,30,40,50,60,70,80,90,100]
+lead_times = [3,10,20,30,40,50,60,70,80,90, 100]
 mixed_lead_times = False
 lead_policy = 'LP_fill'
 # Specify output path, if blank it goes to cwd
