@@ -451,15 +451,14 @@ if __name__ == '__main__':
                         
                         print(datetime.datetime.now() - begin_time)
 
-                print('loadpickles started')
-                ####### dynamic simulation stuff ######
-                simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time, zero_order=zero_order, govind_policy=govind_policy)
-                print('run_sim started')
-                if lead_time > 0:
-                    run_pos_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time, lead_policy=lead_policy)
-                elif govind_policy:
-                    run_govind_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
-                elif lead_time == 0:
-                    run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
-    
+            print('loadpickles started')
+            ####### dynamic simulation stuff ######
+            simlist = loadpickles(path = new_path, alpha=alpha, simple_network=simple_network, lead_time=lead_time, zero_order=zero_order, govind_policy=govind_policy)
+            print('run_sim started')
+            if lead_time > 0:
+                run_pos_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time, lead_policy=lead_policy)
+            elif govind_policy:
+                run_govind_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
+            elif lead_time == 0:
+                run_sim(sim_list=simlist,alpha=alpha, novel=novel_lower, optimal_policy=optimal_policy, lead_time=lead_time)
 
